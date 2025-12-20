@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <title>My Music Studio</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            background: #111;
+            color: #fff;
+        }
+
+        header {
+            padding: 30px;
+            text-align: center;
+            background: linear-gradient(135deg, #d6004c, #7b1fa2);
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 32px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+            padding: 40px 20px;
+        }
+
+        .upload-box {
+            background: #1e1e1e;
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 40px;
+        }
+
+        .upload-box h2 {
+            margin-bottom: 20px;
+        }
+
+        input,
+        textarea {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            border: none;
+            outline: none;
+        }
+
+        input[type="file"] {
+            background: #fff;
+        }
+
+        button {
+            background: #d6004c;
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background: #b50040;
+        }
+
+        .playlist {
+            display: grid;
+            gap: 20px;
+        }
+
+        .track {
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 12px;
+        }
+
+        .track h3 {
+            margin: 0 0 5px;
+        }
+
+        .track p {
+            margin: 0 0 10px;
+            color: #bbb;
+            font-size: 14px;
+        }
+
+        audio {
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .delete-btn {
+            margin-top: 10px;
+            background: #444;
+            font-size: 14px;
+        }
+
+        .delete-btn:hover {
+            background: #ff4444;
+        }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #888;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>🎶 My Music Studio</h1>
+        <p>Carica e ascolta le tue canzoni originali</p>
+    </header>
+
+    <div class="container">
+
+        <!-- UPLOAD -->
+        <div class="upload-box">
+            <h2>Upload nuova traccia</h2>
+
+            <input type="text" id="title" placeholder="Titolo della canzone">
+            <input type="text" id="artist" placeholder="Artista (il tuo nome)">
+            <textarea id="description" placeholder="Descrizione o testo della canzone"></textarea>
+
+            <input type="file" id="audioFile" accept="audio/*">
+
+            <button onclick="addTrack()">Carica traccia</button>
+        </div>
+
+        <!-- PLAYLIST -->
+        <div class="playlist" id="playlist"></div>
+
+    </div>
+
+    <footer>
+        © 2025 – Le mie composizioni musicali
+    </footer>
+
+    <script>
+        const playlist = document.getElementById("playlist");
+
+        function addTrack() {
+            const title = document.getElementById("title").value;
+            const artist = document.getElementById("artist").value;
+            const description = document.getElementById("description").value;
+            const fileInput = document.getElementById("audioFile");
+            const file = fileInput.files[0];
+
+            if (!title || !artist || !file) {
+                alert("Compila tutti i campi obbligatori e seleziona un file audio.");
+                return;
+            }
+
+            const audioURL = URL.createObjectURL(file);
+
+            const track = document.createElement("div");
+            track.className = "track";
+
+            track.innerHTML = `
+            <h3>${title}</h3>
+            <p><strong>${artist}</strong></p>
+            <p>${description}</p>
+            <audio controls src="${audioURL}"></audio>
+            <button class="delete-btn" onclick="this.parentElement.remove()">Rimuovi</button>
+        `;
+
+            playlist.appendChild(track);
+
+            // Reset campi
+            document.getElementById("title").value = "";
+            document.getElementById("artist").value = "";
+            document.getElementById("description").value = "";
+            fileInput.value = "";
+        }
+    </script>
+
+</body>
+
+</html>
