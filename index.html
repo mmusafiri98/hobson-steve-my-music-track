@@ -3,9 +3,8 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>My Music Studio</title>
+    <title>My Music Studio – Cover Video Pepe Musafirir web devellopeur songwriter</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <style>
         * {
             box-sizing: border-box;
@@ -24,11 +23,6 @@
             background: linear-gradient(135deg, #d6004c, #7b1fa2);
         }
 
-        header h1 {
-            margin: 0;
-            font-size: 32px;
-        }
-
         .container {
             max-width: 900px;
             margin: auto;
@@ -42,22 +36,17 @@
             margin-bottom: 40px;
         }
 
-        .upload-box h2 {
-            margin-bottom: 20px;
-        }
-
-        input,
-        textarea {
+        input {
             width: 100%;
             padding: 12px;
             margin-bottom: 15px;
             border-radius: 8px;
             border: none;
-            outline: none;
         }
 
         input[type="file"] {
             background: #fff;
+            color: #000;
         }
 
         button {
@@ -74,120 +63,360 @@
             background: #b50040;
         }
 
-        .playlist {
-            display: grid;
-            gap: 20px;
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
         }
 
-        .track {
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            background: #2a2a2a;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .video-library {
+            margin-top: 40px;
+        }
+
+        .video-library h2 {
+            margin-bottom: 20px;
+        }
+
+        .video-item {
             background: #1e1e1e;
             padding: 20px;
             border-radius: 12px;
+            margin-bottom: 20px;
         }
 
-        .track h3 {
-            margin: 0 0 5px;
+        .video-item h3 {
+            margin: 0 0 10px 0;
+            color: #d6004c;
         }
 
-        .track p {
-            margin: 0 0 10px;
-            color: #bbb;
-            font-size: 14px;
+        .video-item p {
+            margin: 5px 0;
+            color: #aaa;
         }
 
-        audio {
+        .video-item video {
             width: 100%;
-            margin-top: 10px;
+            max-height: 400px;
+            margin: 15px 0;
+            border-radius: 8px;
+        }
+
+        .video-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .video-actions a,
+        .video-actions button {
+            flex: 1;
+            text-align: center;
+            text-decoration: none;
         }
 
         .delete-btn {
-            margin-top: 10px;
-            background: #444;
-            font-size: 14px;
+            background: #666;
         }
 
         .delete-btn:hover {
-            background: #ff4444;
+            background: #444;
         }
 
         footer {
             text-align: center;
             padding: 20px;
             color: #888;
-            font-size: 14px;
         }
     </style>
 </head>
 
 <body>
-
     <header>
         <h1>🎶 My Music Studio</h1>
-        <p>Carica e ascolta le tue canzoni originali</p>
+        <p>Genera video dalla cover + audio pronto per YouTube</p>
     </header>
 
     <div class="container">
-
-        <!-- UPLOAD -->
         <div class="upload-box">
-            <h2>Upload nuova traccia</h2>
-
-            <input type="text" id="title" placeholder="Titolo della canzone">
-            <input type="text" id="artist" placeholder="Artista (il tuo nome)">
-            <textarea id="description" placeholder="Descrizione o testo della canzone"></textarea>
-
+            <h2>Crea Video dalla Cover</h2>
+            <input id="title" placeholder="Titolo della canzone">
+            <input id="artist" placeholder="Artista">
+            <label>Cover (immagine)</label>
+            <input type="file" id="coverFile" accept="image/*">
+            <label>File audio</label>
             <input type="file" id="audioFile" accept="audio/*">
-
-            <button onclick="addTrack()">Carica traccia</button>
+            <button id="createBtn" onclick="createVideo()">Crea Video</button>
+            <div id="status" class="status"></div>
         </div>
 
-        <!-- PLAYLIST -->
-        <div class="playlist" id="playlist"></div>
-
+        <div class="video-library" id="videoLibrary" style="display:none;">
+            <h2>📚 I Tuoi Video</h2>
+            <div id="videoList"></div>
+        </div>
     </div>
 
     <footer>
-        © 2025 – Le mie composizioni musicali
+        © 2025 – My Music Studio
     </footer>
 
     <script>
-        const playlist = document.getElementById("playlist");
+        const titleInput = document.getElementById("title");
+        const artistInput = document.getElementById("artist");
+        const coverFile = document.getElementById("coverFile");
+        const audioFile = document.getElementById("audioFile");
+        const statusDiv = document.getElementById("status");
+        const createBtn = document.getElementById("createBtn");
+        const videoLibrary = document.getElementById("videoLibrary");
+        const videoList = document.getElementById("videoList");
 
-        function addTrack() {
-            const title = document.getElementById("title").value;
-            const artist = document.getElementById("artist").value;
-            const description = document.getElementById("description").value;
-            const fileInput = document.getElementById("audioFile");
-            const file = fileInput.files[0];
+        // Carica i video salvati all'avvio
+        window.addEventListener('load', loadSavedVideos);
 
-            if (!title || !artist || !file) {
-                alert("Compila tutti i campi obbligatori e seleziona un file audio.");
+        function showStatus(message) {
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
+        }
+
+        async function loadSavedVideos() {
+            try {
+                const keys = await window.storage.list('video:');
+                if (keys && keys.keys.length > 0) {
+                    videoLibrary.style.display = 'block';
+                    videoList.innerHTML = '';
+
+                    for (const key of keys.keys) {
+                        const result = await window.storage.get(key);
+                        if (result) {
+                            const videoData = JSON.parse(result.value);
+                            displayVideo(videoData);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.log('Nessun video salvato trovato');
+            }
+        }
+
+        function displayVideo(videoData) {
+            const videoItem = document.createElement('div');
+            videoItem.className = 'video-item';
+            videoItem.innerHTML = `
+                <h3>${videoData.title}</h3>
+                <p>Artista: ${videoData.artist}</p>
+                <p>Creato il: ${new Date(videoData.timestamp).toLocaleString('it-IT')}</p>
+                <video controls>
+                    <source src="${videoData.videoURL}" type="video/webm">
+                </video>
+                <div class="video-actions">
+                    <a href="${videoData.videoURL}" download="${videoData.title} - ${videoData.artist}.webm">
+                        📥 Scarica
+                    </a>
+                    <button class="delete-btn" onclick="deleteVideo('${videoData.id}')">
+                        🗑️ Elimina
+                    </button>
+                </div>
+            `;
+            videoList.appendChild(videoItem);
+        }
+
+        async function deleteVideo(videoId) {
+            if (confirm('Sei sicuro di voler eliminare questo video?')) {
+                try {
+                    await window.storage.delete(`video:${videoId}`);
+                    loadSavedVideos();
+                } catch (error) {
+                    alert('Errore durante l\'eliminazione del video');
+                }
+            }
+        }
+
+        async function saveVideo(title, artist, videoBlob) {
+            const videoId = Date.now().toString();
+            const videoURL = URL.createObjectURL(videoBlob);
+
+            // Converti il blob in base64 per salvarlo
+            const reader = new FileReader();
+            return new Promise((resolve, reject) => {
+                reader.onloadend = async () => {
+                    const base64data = reader.result;
+                    const videoData = {
+                        id: videoId,
+                        title: title,
+                        artist: artist,
+                        videoURL: base64data,
+                        timestamp: Date.now()
+                    };
+
+                    try {
+                        await window.storage.set(`video:${videoId}`, JSON.stringify(videoData));
+                        resolve(videoData);
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(videoBlob);
+            });
+        }
+
+        async function createVideo() {
+            const title = titleInput.value.trim();
+            const artist = artistInput.value.trim();
+            const cover = coverFile.files[0];
+            const audioFileObj = audioFile.files[0];
+
+            if (!title || !artist || !cover || !audioFileObj) {
+                alert("Compila tutti i campi e seleziona cover e audio");
                 return;
             }
 
-            const audioURL = URL.createObjectURL(file);
+            createBtn.disabled = true;
+            showStatus("Caricamento file...");
 
-            const track = document.createElement("div");
-            track.className = "track";
+            try {
+                const coverURL = URL.createObjectURL(cover);
+                const audioURL = URL.createObjectURL(audioFileObj);
 
-            track.innerHTML = `
-            <h3>${title}</h3>
-            <p><strong>${artist}</strong></p>
-            <p>${description}</p>
-            <audio controls src="${audioURL}"></audio>
-            <button class="delete-btn" onclick="this.parentElement.remove()">Rimuovi</button>
-        `;
+                // Carica immagine
+                showStatus("Elaborazione immagine...");
+                const img = new Image();
+                img.src = coverURL;
+                await img.decode();
 
-            playlist.appendChild(track);
+                // Carica audio e ottieni durata
+                showStatus("Elaborazione audio...");
+                const audio = new Audio(audioURL);
 
-            // Reset campi
-            document.getElementById("title").value = "";
-            document.getElementById("artist").value = "";
-            document.getElementById("description").value = "";
-            fileInput.value = "";
+                await new Promise((resolve, reject) => {
+                    audio.addEventListener('loadedmetadata', () => {
+                        if (audio.duration === Infinity || isNaN(audio.duration)) {
+                            audio.currentTime = 1e101;
+                            audio.addEventListener('timeupdate', function getDuration() {
+                                if (audio.duration !== Infinity && !isNaN(audio.duration)) {
+                                    audio.currentTime = 0;
+                                    audio.removeEventListener('timeupdate', getDuration);
+                                    resolve();
+                                }
+                            });
+                        } else {
+                            resolve();
+                        }
+                    });
+                    audio.addEventListener('error', reject);
+                });
+
+                const duration = audio.duration;
+                showStatus(`Creazione video (${Math.round(duration)}s)...`);
+
+                // Setup canvas
+                const canvas = document.createElement('canvas');
+                canvas.width = 1280;
+                canvas.height = 720;
+                const ctx = canvas.getContext('2d');
+
+                // Setup audio context per sincronizzazione
+                const audioContext = new AudioContext();
+                const source = audioContext.createMediaElementSource(audio);
+                const dest = audioContext.createMediaStreamDestination();
+                source.connect(dest);
+                source.connect(audioContext.destination);
+
+                // Setup recording
+                const videoStream = canvas.captureStream(30);
+                const audioTrack = dest.stream.getAudioTracks()[0];
+                videoStream.addTrack(audioTrack);
+
+                const mediaRecorder = new MediaRecorder(videoStream, {
+                    mimeType: 'video/webm;codecs=vp9,opus',
+                    videoBitsPerSecond: 2500000
+                });
+
+                const chunks = [];
+                mediaRecorder.ondataavailable = e => {
+                    if (e.data.size > 0) chunks.push(e.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const blob = new Blob(chunks, { type: 'video/webm' });
+
+                    showStatus("💾 Salvataggio video...");
+
+                    try {
+                        await saveVideo(title, artist, blob);
+                        showStatus("✅ Video creato e salvato con successo!");
+
+                        // Ricarica la libreria video
+                        await loadSavedVideos();
+
+                        // Reset form
+                        titleInput.value = '';
+                        artistInput.value = '';
+                        coverFile.value = '';
+                        audioFile.value = '';
+                    } catch (error) {
+                        showStatus("⚠️ Video creato ma errore nel salvataggio");
+                        console.error(error);
+                    }
+
+                    createBtn.disabled = false;
+                    URL.revokeObjectURL(coverURL);
+                    URL.revokeObjectURL(audioURL);
+                };
+
+                // Disegna frame
+                function drawFrame() {
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    // Disegna cover centrata
+                    const scale = Math.min(canvas.width / img.width, canvas.height / img.height) * 0.7;
+                    const w = img.width * scale;
+                    const h = img.height * scale;
+                    ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2 - 50, w, h);
+
+                    // Testo
+                    ctx.fillStyle = '#fff';
+                    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+                    ctx.shadowBlur = 10;
+                    ctx.font = 'bold 48px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(title, canvas.width / 2, 650);
+
+                    ctx.font = '36px Arial';
+                    ctx.fillText(artist, canvas.width / 2, 700);
+                    ctx.shadowBlur = 0;
+
+                    if (!audio.paused && !audio.ended) {
+                        requestAnimationFrame(drawFrame);
+                    }
+                }
+
+                mediaRecorder.start();
+                audio.currentTime = 0;
+                await audio.play();
+                drawFrame();
+
+                audio.onended = () => {
+                    setTimeout(() => {
+                        mediaRecorder.stop();
+                        audioContext.close();
+                    }, 500);
+                };
+
+            } catch (error) {
+                console.error(error);
+                alert("Errore durante la creazione del video: " + error.message);
+                createBtn.disabled = false;
+                showStatus("❌ Errore durante la creazione");
+            }
         }
     </script>
-
 </body>
 
 </html>
