@@ -145,11 +145,7 @@
             transition: all 0.3s;
         }
 
-        .upload-area:hover {
-            background: #2a2a2a;
-            border-color: #7b1fa2;
-        }
-
+        .upload-area:hover,
         .upload-area.dragover {
             background: #2a2a2a;
             border-color: #7b1fa2;
@@ -272,7 +268,7 @@
             <button class="tab" onclick="switchTab('import')">📤 Importa Video</button>
         </div>
 
-        <!-- SEZIONE 1: CREA VIDEO -->
+        <!-- CREA VIDEO -->
         <div id="createSection" class="section active">
             <div class="upload-box">
                 <h2>Crea Video dalla Cover</h2>
@@ -293,7 +289,7 @@
             </div>
         </div>
 
-        <!-- SEZIONE 2: IMPORTA VIDEO -->
+        <!-- IMPORTA VIDEO -->
         <div id="importSection" class="section">
             <div class="upload-box">
                 <h2>📤 Importa Video dal Computer</h2>
@@ -308,9 +304,7 @@
                 </div>
 
                 <input type="file" id="importVideoFile" accept="video/*" style="display: none;">
-
                 <button id="importBtn" onclick="importVideo()" disabled>Aggiungi alla Galleria</button>
-
                 <div id="importStatus" class="status" style="display: none;"></div>
             </div>
         </div>
@@ -327,9 +321,7 @@
         </div>
     </div>
 
-    <footer>
-        © 2025 – My Music Studio
-    </footer>
+    <footer>© 2025 – My Music Studio</footer>
 
     <script>
         const titleInput = document.getElementById("title");
@@ -369,34 +361,63 @@
             }
         }
 
-        // Gestione import video
-        importVideoFile.addEventListener('change', (e) => {
-            handleImportFile(e.target.files[0]);
-        });
+        // ------------------ IndexedDB ------------------
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open("VideoDB", 1);
+                request.onupgradeneeded = function (e) {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains("videos")) {
+                        db.createObjectStore("videos", { keyPath: "id" });
+                    }
+                };
+                request.onsuccess = e => resolve(e.target.result);
+                request.onerror = e => reject(e.target.error);
+            });
+        }
 
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
+        async function saveVideoIndexedDB(videoBlob, title, artist) {
+            const db = await openDB();
+            const tx = db.transaction("videos", "readwrite");
+            const store = tx.objectStore("videos");
+            const id = Date.now().toString();
+            store.put({ id, title, artist, data: videoBlob, timestamp: Date.now() });
+            return new Promise((resolve, reject) => {
+                tx.oncomplete = () => resolve(id);
+                tx.onerror = e => reject(e.target.error);
+            });
+        }
 
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('dragover');
-        });
+        async function getAllVideos() {
+            const db = await openDB();
+            const tx = db.transaction("videos", "readonly");
+            const store = tx.objectStore("videos");
+            return new Promise((resolve, reject) => {
+                const request = store.getAll();
+                request.onsuccess = e => resolve(e.target.result);
+                request.onerror = e => reject(e.target.error);
+            });
+        }
 
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            handleImportFile(e.dataTransfer.files[0]);
-        });
+        async function deleteVideoIndexedDB(id) {
+            const db = await openDB();
+            const tx = db.transaction("videos", "readwrite");
+            const store = tx.objectStore("videos");
+            store.delete(id);
+            return new Promise((resolve, reject) => {
+                tx.oncomplete = () => resolve();
+                tx.onerror = e => reject(e.target.error);
+            });
+        }
+
+        // ------------------ Import Video ------------------
+        importVideoFile.addEventListener('change', (e) => handleImportFile(e.target.files[0]));
+        uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+        uploadArea.addEventListener('drop', (e) => { e.preventDefault(); uploadArea.classList.remove('dragover'); handleImportFile(e.dataTransfer.files[0]); });
 
         function handleImportFile(file) {
-            if (!file) return;
-
-            if (!file.type.startsWith('video/')) {
-                alert('Per favore seleziona un file video');
-                return;
-            }
-
+            if (!file || !file.type.startsWith('video/')) return alert('Seleziona un file video valido');
             selectedImportFile = file;
             const sizeMB = (file.size / 1024 / 1024).toFixed(2);
             uploadArea.innerHTML = `
@@ -408,166 +429,65 @@
             importBtn.disabled = false;
         }
 
-        // Funzioni di storage compatibili
-        async function storageSet(key, value) {
-            if (window.storage) {
-                return await window.storage.set(key, value, true);
-            } else {
-                localStorage.setItem(key, value);
-                return { key, value };
-            }
-        }
-
-        async function storageGet(key) {
-            if (window.storage) {
-                return await window.storage.get(key, true);
-            } else {
-                const value = localStorage.getItem(key);
-                return value ? { key, value } : null;
-            }
-        }
-
-        async function storageDelete(key) {
-            if (window.storage) {
-                return await window.storage.delete(key, true);
-            } else {
-                localStorage.removeItem(key);
-                return { key, deleted: true };
-            }
-        }
-
         async function importVideo() {
-            if (!selectedImportFile) {
-                alert('Seleziona un video');
-                return;
-            }
-
-            const title = importTitle.value.trim() || 'Video importato';
-            const artist = importArtist.value.trim() || 'Artista sconosciuto';
-
+            if (!selectedImportFile) return alert('Seleziona un video');
             importBtn.disabled = true;
             importStatus.style.display = 'block';
             importStatus.textContent = '📤 Importazione in corso...';
 
-            try {
-                const reader = new FileReader();
-                reader.onloadend = async () => {
-                    try {
-                        let videos = [];
-                        try {
-                            const result = await storageGet('videos-gallery');
-                            if (result && result.value) {
-                                videos = JSON.parse(result.value);
-                            }
-                        } catch (e) {
-                            videos = [];
-                        }
+            const title = importTitle.value.trim() || 'Video importato';
+            const artist = importArtist.value.trim() || 'Artista sconosciuto';
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+                const videoBlob = new Blob([reader.result], { type: selectedImportFile.type });
+                const id = await saveVideoIndexedDB(videoBlob, title, artist);
 
-                        const newVideo = {
-                            id: Date.now().toString(),
-                            title: title,
-                            artist: artist,
-                            data: reader.result,
-                            timestamp: Date.now()
-                        };
+                // salva metadati in localStorage
+                let videosMeta = JSON.parse(localStorage.getItem('videos-meta') || '[]');
+                videosMeta.push({ id, title, artist, timestamp: Date.now() });
+                localStorage.setItem('videos-meta', JSON.stringify(videosMeta));
 
-                        videos.push(newVideo);
-                        await storageSet('videos-gallery', JSON.stringify(videos));
+                importStatus.textContent = '✅ Video importato!';
+                importTitle.value = '';
+                importArtist.value = '';
+                importVideoFile.value = '';
+                selectedImportFile = null;
+                uploadArea.innerHTML = `
+                    <p style="font-size: 48px; margin: 0;">🎬</p>
+                    <p style="font-size: 18px; margin: 10px 0;">Clicca per selezionare un video</p>
+                    <p style="color: #888; font-size: 14px;">oppure trascina il file qui</p>
+                    <p style="color: #888; font-size: 12px;">Formati supportati: MP4, WebM, MOV, AVI</p>
+                `;
+                importBtn.disabled = true;
 
-                        importStatus.textContent = '✅ Video importato con successo!';
-                        importStatus.style.background = '#1e7b1e';
-
-                        importTitle.value = '';
-                        importArtist.value = '';
-                        importVideoFile.value = '';
-                        selectedImportFile = null;
-                        uploadArea.innerHTML = `
-                            <p style="font-size: 48px; margin: 0;">🎬</p>
-                            <p style="font-size: 18px; margin: 10px 0;">Clicca per selezionare un video</p>
-                            <p style="color: #888; font-size: 14px;">oppure trascina il file qui</p>
-                            <p style="color: #888; font-size: 12px;">Formati supportati: MP4, WebM, MOV, AVI</p>
-                        `;
-                        importBtn.disabled = true;
-
-                        await loadGallery();
-
-                        setTimeout(() => {
-                            importStatus.style.display = 'none';
-                            importStatus.style.background = '#2a2a2a';
-                        }, 3000);
-
-                    } catch (error) {
-                        importStatus.textContent = '❌ Errore importazione: ' + error.message;
-                        importStatus.style.background = '#7b1e1e';
-                        importBtn.disabled = false;
-                    }
-                };
-                reader.onerror = () => {
-                    importStatus.textContent = '❌ Errore lettura file';
-                    importStatus.style.background = '#7b1e1e';
-                    importBtn.disabled = false;
-                };
-                reader.readAsDataURL(selectedImportFile);
-            } catch (error) {
-                importStatus.textContent = '❌ Errore: ' + error.message;
-                importStatus.style.background = '#7b1e1e';
-                importBtn.disabled = false;
-            }
+                await loadGallery();
+                setTimeout(() => importStatus.style.display = 'none', 3000);
+            };
+            reader.readAsArrayBuffer(selectedImportFile);
         }
 
-        function updateProgress(percent, message) {
-            progressContainer.style.display = 'block';
-            progressFill.style.width = percent + '%';
-            progressFill.textContent = Math.round(percent) + '%';
-            statusDiv.textContent = message;
-        }
-
+        // ------------------ Galleria ------------------
         async function loadGallery() {
-            try {
-                const result = await storageGet('videos-gallery');
-
-                if (result && result.value) {
-                    const videos = JSON.parse(result.value);
-                    if (videos.length > 0) {
-                        displayGallery(videos);
-                        return;
-                    }
-                }
-
+            const videosMeta = JSON.parse(localStorage.getItem('videos-meta') || '[]');
+            if (videosMeta.length === 0) {
                 gallery.style.display = 'none';
                 emptyState.style.display = 'block';
-            } catch (error) {
-                console.log('Nessun video salvato');
-                gallery.style.display = 'none';
-                emptyState.style.display = 'block';
+                return;
             }
-        }
-
-        function displayGallery(videos) {
-            gallery.style.display = 'block';
-            emptyState.style.display = 'none';
+            const allVideos = await getAllVideos();
             videoGrid.innerHTML = '';
-
-            videos.sort((a, b) => b.timestamp - a.timestamp);
-
-            videos.forEach(video => {
+            videosMeta.sort((a, b) => b.timestamp - a.timestamp).forEach(meta => {
+                const video = allVideos.find(v => v.id === meta.id);
+                if (!video) return;
                 const card = document.createElement('div');
                 card.className = 'video-card';
-
                 const date = new Date(video.timestamp);
-                const dateStr = date.toLocaleDateString('it-IT', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric'
-                });
-                const timeStr = date.toLocaleTimeString('it-IT', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                });
+                const dateStr = date.toLocaleDateString('it-IT');
+                const timeStr = date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
 
                 card.innerHTML = `
                     <video preload="metadata" onclick="this.paused ? this.play() : this.pause()">
-                        <source src="${video.data}" type="video/webm">
+                        <source src="${URL.createObjectURL(video.data)}" type="video/webm">
                     </video>
                     <div class="video-info">
                         <h3>${video.title}</h3>
@@ -575,237 +495,17 @@
                         <p>📅 ${dateStr} • ${timeStr}</p>
                     </div>
                     <div class="video-actions">
-                        <a href="${video.data}" download="${video.title} - ${video.artist}.webm" class="download-btn">
-                            📥 Scarica
-                        </a>
-                        <button class="delete-btn" onclick="deleteVideo('${video.id}')">
-                            🗑️ Elimina
-                        </button>
+                        <a href="${URL.createObjectURL(video.data)}" download="${video.title} - ${video.artist}.webm" class="download-btn">📥 Scarica</a>
+                        <button class="delete-btn" onclick="deleteVideo('${video.id}')">🗑️ Elimina</button>
                     </div>
                 `;
-
                 videoGrid.appendChild(card);
             });
+            gallery.style.display = 'block';
+            emptyState.style.display = 'none';
         }
 
-        async function saveVideo(title, artist, videoBlob) {
-            const videoId = Date.now().toString();
-
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = async () => {
-                    try {
-                        let videos = [];
-                        try {
-                            const result = await storageGet('videos-gallery');
-                            if (result && result.value) {
-                                videos = JSON.parse(result.value);
-                            }
-                        } catch (e) {
-                            videos = [];
-                        }
-
-                        const newVideo = {
-                            id: videoId,
-                            title: title,
-                            artist: artist,
-                            data: reader.result,
-                            timestamp: Date.now()
-                        };
-
-                        videos.push(newVideo);
-                        await storageSet('videos-gallery', JSON.stringify(videos));
-                        resolve(newVideo);
-                    } catch (error) {
-                        reject(error);
-                    }
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(videoBlob);
-            });
-        }
-
-        async function deleteVideo(videoId) {
-            if (!confirm('Sei sicuro di voler eliminare questo video?')) {
-                return;
-            }
-
-            try {
-                const result = await storageGet('videos-gallery');
-                if (result && result.value) {
-                    let videos = JSON.parse(result.value);
-                    videos = videos.filter(v => v.id !== videoId);
-
-                    if (videos.length > 0) {
-                        await storageSet('videos-gallery', JSON.stringify(videos));
-                    } else {
-                        await storageDelete('videos-gallery');
-                    }
-
-                    await loadGallery();
-                }
-            } catch (error) {
-                alert('Errore durante l\'eliminazione del video');
-                console.error(error);
-            }
-        }
-
-        async function createVideo() {
-            const title = titleInput.value.trim();
-            const artist = artistInput.value.trim();
-            const cover = coverFile.files[0];
-            const audioFileObj = audioFile.files[0];
-
-            if (!title || !artist || !cover || !audioFileObj) {
-                alert("Compila tutti i campi e seleziona cover e audio");
-                return;
-            }
-
-            createBtn.disabled = true;
-            updateProgress(10, "Caricamento file...");
-
-            try {
-                const coverURL = URL.createObjectURL(cover);
-                const audioURL = URL.createObjectURL(audioFileObj);
-
-                updateProgress(20, "Elaborazione immagine...");
-                const img = new Image();
-                img.src = coverURL;
-                await img.decode();
-
-                updateProgress(30, "Elaborazione audio...");
-                const audio = new Audio(audioURL);
-
-                await new Promise((resolve, reject) => {
-                    audio.addEventListener('loadedmetadata', () => {
-                        if (audio.duration === Infinity || isNaN(audio.duration)) {
-                            audio.currentTime = 1e101;
-                            audio.addEventListener('timeupdate', function getDuration() {
-                                if (audio.duration !== Infinity && !isNaN(audio.duration)) {
-                                    audio.currentTime = 0;
-                                    audio.removeEventListener('timeupdate', getDuration);
-                                    resolve();
-                                }
-                            });
-                        } else {
-                            resolve();
-                        }
-                    });
-                    audio.addEventListener('error', reject);
-                });
-
-                const duration = audio.duration;
-                updateProgress(40, `Creazione video (${Math.round(duration)}s)...`);
-
-                const canvas = document.createElement('canvas');
-                canvas.width = 1280;
-                canvas.height = 720;
-                const ctx = canvas.getContext('2d');
-
-                ctx.fillStyle = '#000';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                const scale = Math.min(canvas.width / img.width, canvas.height / img.height) * 0.7;
-                const w = img.width * scale;
-                const h = img.height * scale;
-                ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2 - 50, w, h);
-
-                ctx.fillStyle = '#fff';
-                ctx.shadowColor = 'rgba(0,0,0,0.8)';
-                ctx.shadowBlur = 10;
-                ctx.font = 'bold 48px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(title, canvas.width / 2, 650);
-
-                ctx.font = '36px Arial';
-                ctx.fillText(artist, canvas.width / 2, 700);
-
-                updateProgress(50, "Registrazione video...");
-
-                const audioContext = new AudioContext();
-                const source = audioContext.createMediaElementSource(audio);
-                const dest = audioContext.createMediaStreamDestination();
-                source.connect(dest);
-                source.connect(audioContext.destination);
-
-                const videoStream = canvas.captureStream(30);
-                const audioTrack = dest.stream.getAudioTracks()[0];
-                videoStream.addTrack(audioTrack);
-
-                const mediaRecorder = new MediaRecorder(videoStream, {
-                    mimeType: 'video/webm;codecs=vp9,opus',
-                    videoBitsPerSecond: 2500000
-                });
-
-                const chunks = [];
-                mediaRecorder.ondataavailable = e => {
-                    if (e.data.size > 0) chunks.push(e.data);
-                };
-
-                mediaRecorder.onstop = async () => {
-                    const blob = new Blob(chunks, { type: 'video/webm' });
-
-                    updateProgress(95, "Salvataggio video...");
-
-                    try {
-                        await saveVideo(title, artist, blob);
-                        updateProgress(100, "✅ Video salvato nella galleria!");
-
-                        await loadGallery();
-
-                        titleInput.value = '';
-                        artistInput.value = '';
-                        coverFile.value = '';
-                        audioFile.value = '';
-
-                        setTimeout(() => {
-                            progressContainer.style.display = 'none';
-                        }, 3000);
-                    } catch (error) {
-                        updateProgress(100, "⚠️ Errore salvataggio, ma puoi scaricare il video");
-                        console.error(error);
-
-                        const videoURL = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = videoURL;
-                        a.download = `${title} - ${artist}.webm`;
-                        a.click();
-                    }
-
-                    createBtn.disabled = false;
-                    URL.revokeObjectURL(coverURL);
-                    URL.revokeObjectURL(audioURL);
-                };
-
-                mediaRecorder.start();
-                audio.currentTime = 0;
-                await audio.play();
-
-                const progressInterval = setInterval(() => {
-                    if (!audio.paused && !audio.ended) {
-                        const percent = 50 + (audio.currentTime / duration * 45);
-                        const timeLeft = Math.round(duration - audio.currentTime);
-                        updateProgress(percent, `Registrazione: ${timeLeft}s rimanenti`);
-                    }
-                }, 1000);
-
-                audio.onended = () => {
-                    clearInterval(progressInterval);
-                    updateProgress(95, "Finalizzazione video...");
-                    setTimeout(() => {
-                        mediaRecorder.stop();
-                        audioContext.close();
-                    }, 500);
-                };
-
-            } catch (error) {
-                console.error(error);
-                alert("Errore: " + error.message);
-                createBtn.disabled = false;
-                updateProgress(0, "❌ Errore durante la creazione");
-            }
-        }
-    </script>
-</body>
-
-</html>
+        async function deleteVideo(id) {
+            if (!confirm('Sei sicuro di voler eliminare questo video?')) return;
+            await deleteVideoIndexedDB(id);
+            let videosMeta = JSON.parse(localStorage.get
