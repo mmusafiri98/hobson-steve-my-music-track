@@ -19,7 +19,7 @@ header{padding:30px;text-align:center;background:linear-gradient(135deg,#d6004c,
 input{width:100%;padding:12px;margin-bottom:15px;border-radius:8px;border:none}
 input[type=file]{background:#fff;color:#000}
 button{background:#d6004c;color:#fff;border:none;padding:12px 24px;border-radius:25px;cursor:pointer}
-button:disabled{background:#555}
+button:disabled{background:#555;cursor:not-allowed}
 .upload-area{border:3px dashed #d6004c;border-radius:12px;padding:40px;text-align:center;cursor:pointer}
 .upload-area.dragover{background:#2a2a2a}
 .gallery{margin-top:40px}
@@ -33,7 +33,8 @@ button:disabled{background:#555}
 .empty{text-align:center;color:#777;padding:60px}
 .progress{display:none;margin-top:15px}
 .progress-bar{height:25px;background:#333;border-radius:15px;overflow:hidden}
-.progress-fill{height:100%;width:0;background:linear-gradient(90deg,#d6004c,#7b1fa2);text-align:center;line-height:25px}
+.progress-fill{height:100%;width:0;background:linear-gradient(90deg,#d6004c,#7b1fa2);text-align:center;line-height:25px;transition:width 0.3s}
+.status{margin-top:10px;color:#aaa;font-size:14px}
 footer{text-align:center;padding:20px;color:#777}
 </style>
 </head>
@@ -61,12 +62,13 @@ footer{text-align:center;padding:20px;color:#777}
 <input type="file" id="coverFile" accept="image/*">
 <label>Audio</label>
 <input type="file" id="audioFile" accept="audio/*">
-<button onclick="createVideo()">Crea Video</button>
+<button id="createBtn" onclick="createVideo()">Crea Video</button>
 
 <div class="progress" id="progressBox">
 <div class="progress-bar">
 <div class="progress-fill" id="progressFill">0%</div>
 </div>
+<div class="status" id="status"></div>
 </div>
 </div>
 </div>
@@ -99,8 +101,13 @@ footer{text-align:center;padding:20px;color:#777}
 function switchTab(t){
 document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'))
 document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'))
-if(t==='create'){document.querySelectorAll('.tab')[0].classList.add('active');createSection.classList.add('active')}
-else{document.querySelectorAll('.tab')[1].classList.add('active');importSection.classList.add('active')}
+if(t==='create'){
+document.querySelectorAll('.tab')[0].classList.add('active')
+document.getElementById('createSection').classList.add('active')
+}else{
+document.querySelectorAll('.tab')[1].classList.add('active')
+document.getElementById('importSection').classList.add('active')
+}
 }
 
 /* ---------------- IndexedDB ---------------- */
@@ -136,106 +143,238 @@ tx.oncomplete=loadGallery
 
 /* ---------------- CREATE VIDEO ---------------- */
 async function createVideo(){
-const title=titleInput.value,artist=artistInput.value
-const cover=coverFile.files[0],audioFileObj=audioFile.files[0]
-if(!title||!artist||!cover||!audioFileObj)return alert("Compila tutto")
+const title = document.getElementById('title').value
+const artist = document.getElementById('artist').value
+const coverFile = document.getElementById('coverFile').files[0]
+const audioFileObj = document.getElementById('audioFile').files[0]
+const createBtn = document.getElementById('createBtn')
+const progressBox = document.getElementById('progressBox')
+const progressFill = document.getElementById('progressFill')
+const status = document.getElementById('status')
 
-progressBox.style.display="block"
-const canvas=document.createElement("canvas")
-canvas.width=1280;canvas.height=720
-const ctx=canvas.getContext("2d")
-
-const img=new Image()
-img.src=URL.createObjectURL(cover)
-await img.decode()
-
-ctx.fillStyle="#000";ctx.fillRect(0,0,canvas.width,canvas.height)
-const scale=Math.min(canvas.width/img.width,canvas.height/img.height)*0.7
-ctx.drawImage(img,(canvas.width-img.width*scale)/2,(canvas.height-img.height*scale)/2-40,img.width*scale,img.height*scale)
-
-ctx.fillStyle="#fff";ctx.font="48px Arial";ctx.textAlign="center"
-ctx.fillText(title,canvas.width/2,650)
-ctx.font="32px Arial";ctx.fillText(artist,canvas.width/2,700)
-
-const audio=new Audio(URL.createObjectURL(audioFileObj))
-await audio.play().catch(()=>{})
-audio.pause();audio.currentTime=0
-
-const stream=canvas.captureStream(30)
-const ac=new AudioContext()
-const src=ac.createMediaElementSource(audio)
-const dest=ac.createMediaStreamDestination()
-src.connect(dest);src.connect(ac.destination)
-stream.addTrack(dest.stream.getAudioTracks()[0])
-
-const rec=new MediaRecorder(stream,{mimeType:"video/webm"})
-const chunks=[]
-rec.ondataavailable=e=>chunks.push(e.data)
-rec.onstop=async()=>{
-const blob=new Blob(chunks,{type:"video/webm"})
-await saveVideo(blob,title,artist)
-progressFill.style.width="100%";progressFill.textContent="100%"
-loadGallery()
+if(!title||!artist||!coverFile||!audioFileObj){
+alert("Compila tutti i campi e seleziona cover e audio")
+return
 }
 
-rec.start()
+try {
+createBtn.disabled = true
+progressBox.style.display = "block"
+status.textContent = "Caricamento cover..."
+
+// Canvas setup
+const canvas = document.createElement("canvas")
+canvas.width = 1280
+canvas.height = 720
+const ctx = canvas.getContext("2d")
+
+// Load image
+const img = new Image()
+const imgUrl = URL.createObjectURL(coverFile)
+img.src = imgUrl
+await new Promise((resolve, reject) => {
+img.onload = resolve
+img.onerror = reject
+})
+
+// Draw background and image
+ctx.fillStyle = "#000"
+ctx.fillRect(0, 0, canvas.width, canvas.height)
+const scale = Math.min(canvas.width/img.width, canvas.height/img.height) * 0.7
+const x = (canvas.width - img.width * scale) / 2
+const y = (canvas.height - img.height * scale) / 2 - 40
+ctx.drawImage(img, x, y, img.width * scale, img.height * scale)
+
+// Draw text
+ctx.fillStyle = "#fff"
+ctx.font = "bold 48px Arial"
+ctx.textAlign = "center"
+ctx.fillText(title, canvas.width/2, 650)
+ctx.font = "32px Arial"
+ctx.fillText(artist, canvas.width/2, 700)
+
+URL.revokeObjectURL(imgUrl)
+
+status.textContent = "Caricamento audio..."
+
+// Load audio
+const audio = new Audio()
+const audioUrl = URL.createObjectURL(audioFileObj)
+audio.src = audioUrl
+audio.volume = 1.0
+
+await new Promise((resolve, reject) => {
+audio.addEventListener('loadedmetadata', resolve)
+audio.addEventListener('error', reject)
+})
+
+const duration = audio.duration
+
+status.textContent = "Creazione video in corso..."
+
+// Setup MediaRecorder
+const stream = canvas.captureStream(30)
+const audioContext = new AudioContext()
+const source = audioContext.createMediaElementSource(audio)
+const destination = audioContext.createMediaStreamDestination()
+source.connect(destination)
+source.connect(audioContext.destination)
+
+const audioTrack = destination.stream.getAudioTracks()[0]
+stream.addTrack(audioTrack)
+
+const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') 
+  ? 'video/webm;codecs=vp9' 
+  : 'video/webm'
+
+const recorder = new MediaRecorder(stream, {mimeType})
+const chunks = []
+
+recorder.ondataavailable = e => {
+if(e.data.size > 0) chunks.push(e.data)
+}
+
+recorder.onstop = async () => {
+const blob = new Blob(chunks, {type: 'video/webm'})
+status.textContent = "Salvataggio..."
+await saveVideo(blob, title, artist)
+status.textContent = "✅ Video creato con successo!"
+setTimeout(() => {
+progressBox.style.display = "none"
+progressFill.style.width = "0%"
+progressFill.textContent = "0%"
+createBtn.disabled = false
+document.getElementById('title').value = ""
+document.getElementById('artist').value = ""
+document.getElementById('coverFile').value = ""
+document.getElementById('audioFile').value = ""
+}, 2000)
+loadGallery()
+URL.revokeObjectURL(audioUrl)
+}
+
+// Start recording
+recorder.start()
 audio.play()
-const dur=audio.duration||60
-const i=setInterval(()=>{
-progressFill.style.width=(audio.currentTime/dur*100)+"%"
-progressFill.textContent=Math.round(audio.currentTime/dur*100)+"%"
-},500)
-audio.onended=()=>{clearInterval(i);rec.stop()}
+
+// Update progress
+const updateProgress = () => {
+const progress = (audio.currentTime / duration * 100)
+progressFill.style.width = progress + "%"
+progressFill.textContent = Math.round(progress) + "%"
+}
+
+const progressInterval = setInterval(updateProgress, 500)
+
+audio.onended = () => {
+clearInterval(progressInterval)
+recorder.stop()
+audioContext.close()
+}
+
+} catch(error) {
+console.error("Errore:", error)
+alert("Errore nella creazione del video: " + error.message)
+createBtn.disabled = false
+progressBox.style.display = "none"
+}
 }
 
 /* ---------------- IMPORT VIDEO ---------------- */
-let selectedFile=null
-uploadArea.onclick=()=>importFile.click()
-importFile.onchange=e=>handleFile(e.target.files[0])
-uploadArea.ondragover=e=>{e.preventDefault();uploadArea.classList.add("dragover")}
-uploadArea.ondragleave=()=>uploadArea.classList.remove("dragover")
-uploadArea.ondrop=e=>{e.preventDefault();uploadArea.classList.remove("dragover");handleFile(e.dataTransfer.files[0])}
+let selectedFile = null
+const uploadArea = document.getElementById('uploadArea')
+const importFile = document.getElementById('importFile')
+const importBtn = document.getElementById('importBtn')
+
+uploadArea.onclick = () => importFile.click()
+importFile.onchange = e => handleFile(e.target.files[0])
+uploadArea.ondragover = e => {
+e.preventDefault()
+uploadArea.classList.add("dragover")
+}
+uploadArea.ondragleave = () => uploadArea.classList.remove("dragover")
+uploadArea.ondrop = e => {
+e.preventDefault()
+uploadArea.classList.remove("dragover")
+handleFile(e.dataTransfer.files[0])
+}
 
 function handleFile(f){
-if(!f||!f.type.startsWith("video/"))return
-selectedFile=f
-uploadArea.innerHTML="✅ "+f.name
-importBtn.disabled=false
+if(!f || !f.type.startsWith("video/")) {
+alert("Seleziona un file video valido")
+return
+}
+selectedFile = f
+uploadArea.innerHTML = "✅ " + f.name
+importBtn.disabled = false
 }
 
-function importVideo(){
-const r=new FileReader()
-r.onload=async()=>{
-await saveVideo(new Blob([r.result]),importTitle.value||"Video",importArtist.value||"")
+async function importVideo(){
+if(!selectedFile) return
+
+const title = document.getElementById('importTitle').value || "Video"
+const artist = document.getElementById('importArtist').value || ""
+
+importBtn.disabled = true
+importBtn.textContent = "Importazione..."
+
+try {
+const arrayBuffer = await selectedFile.arrayBuffer()
+const blob = new Blob([arrayBuffer], {type: selectedFile.type})
+await saveVideo(blob, title, artist)
 loadGallery()
-importBtn.disabled=true
-uploadArea.innerHTML="🎬 Clicca o trascina video"
+
+document.getElementById('importTitle').value = ""
+document.getElementById('importArtist').value = ""
+uploadArea.innerHTML = "🎬 Clicca o trascina video"
+selectedFile = null
+importBtn.textContent = "Aggiungi"
+} catch(error) {
+console.error("Errore importazione:", error)
+alert("Errore nell'importazione: " + error.message)
+importBtn.disabled = false
+importBtn.textContent = "Aggiungi"
 }
-r.readAsArrayBuffer(selectedFile)
 }
 
 /* ---------------- GALLERY ---------------- */
 async function loadGallery(){
-const vids=await getVideos()
-videoGrid.innerHTML=""
-if(!vids.length){gallery.style.display="none";empty.style.display="block";return}
-vids.sort((a,b)=>b.date-a.date).forEach(v=>{
-const url=URL.createObjectURL(v.blob)
-videoGrid.innerHTML+=`
-<div class="video-card">
+try {
+const vids = await getVideos()
+const videoGrid = document.getElementById('videoGrid')
+const gallery = document.getElementById('gallery')
+const empty = document.getElementById('empty')
+
+videoGrid.innerHTML = ""
+
+if(!vids.length){
+gallery.style.display = "none"
+empty.style.display = "block"
+return
+}
+
+vids.sort((a,b) => b.date - a.date).forEach(v => {
+const url = URL.createObjectURL(v.blob)
+const card = document.createElement('div')
+card.className = 'video-card'
+card.innerHTML = `
 <video src="${url}" controls></video>
 <div class="video-info"><b>${v.title}</b><br>${v.artist}</div>
 <div class="video-actions">
 <a class="download-btn" href="${url}" download="${v.title}.webm">Scarica</a>
 <button class="delete-btn" onclick="deleteVideo('${v.id}')">Elimina</button>
-</div>
 </div>`
+videoGrid.appendChild(card)
 })
-gallery.style.display="block";empty.style.display="none"
+gallery.style.display = "block"
+empty.style.display = "none"
+} catch(error) {
+console.error("Errore caricamento galleria:", error)
 }
-window.onload=loadGallery
+}
+
+window.onload = loadGallery
 </script>
 
 </body>
 </html>
-
