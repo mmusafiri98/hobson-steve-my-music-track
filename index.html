@@ -1,341 +1,241 @@
 <!DOCTYPE html>
 <html lang="it">
-
 <head>
-    <meta charset="UTF-8">
-    <title>My Music Studio – Video Manager</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<title>My Music Studio – Cover Video</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <style>
-        * {
-            box-sizing: border-box;
-            font-family: Arial, sans-serif;
-        }
-
-        body {
-            margin: 0;
-            background: #111;
-            color: #fff;
-        }
-
-        header {
-            padding: 30px;
-            text-align: center;
-            background: linear-gradient(135deg, #d6004c, #7b1fa2);
-        }
-
-        .container {
-            max-width: 1000px;
-            margin: auto;
-            padding: 40px 20px;
-        }
-
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 30px;
-        }
-
-        .tab {
-            flex: 1;
-            padding: 15px;
-            background: #1e1e1e;
-            border: none;
-            color: #fff;
-            cursor: pointer;
-            border-radius: 12px;
-            font-size: 16px;
-        }
-
-        .tab.active {
-            background: linear-gradient(135deg, #d6004c, #7b1fa2);
-        }
-
-        .section {
-            display: none;
-        }
-
-        .section.active {
-            display: block;
-        }
-
-        .upload-box {
-            background: #1e1e1e;
-            padding: 25px;
-            border-radius: 12px;
-        }
-
-        input {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 15px;
-            border-radius: 8px;
-            border: none;
-        }
-
-        input[type="file"] {
-            background: #fff;
-            color: #000;
-        }
-
-        button {
-            background: #d6004c;
-            color: #fff;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 25px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-
-        button:disabled {
-            background: #555;
-            cursor: not-allowed;
-        }
-
-        .upload-area {
-            border: 3px dashed #d6004c;
-            border-radius: 12px;
-            padding: 40px;
-            text-align: center;
-            cursor: pointer;
-            margin-bottom: 15px;
-        }
-
-        .upload-area.dragover {
-            background: #2a2a2a;
-        }
-
-        .gallery {
-            margin-top: 50px;
-        }
-
-        .video-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
-        }
-
-        .video-card {
-            background: #1e1e1e;
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
-        .video-card video {
-            width: 100%;
-            height: 200px;
-            object-fit: cover;
-            cursor: pointer;
-        }
-
-        .video-info {
-            padding: 15px;
-        }
-
-        .video-actions {
-            display: flex;
-            gap: 10px;
-            padding: 0 15px 15px;
-        }
-
-        .download-btn {
-            background: #d6004c;
-            color: #fff;
-            text-decoration: none;
-            padding: 8px;
-            border-radius: 8px;
-            text-align: center;
-            flex: 1;
-        }
-
-        .delete-btn {
-            background: #444;
-            color: #fff;
-            border: none;
-            padding: 8px;
-            border-radius: 8px;
-            flex: 1;
-            cursor: pointer;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 60px;
-            color: #777;
-        }
-
-        footer {
-            text-align: center;
-            padding: 20px;
-            color: #777;
-        }
-    </style>
+<style>
+*{box-sizing:border-box;font-family:Arial,sans-serif}
+body{margin:0;background:#111;color:#fff}
+header{padding:30px;text-align:center;background:linear-gradient(135deg,#d6004c,#7b1fa2)}
+.container{max-width:1000px;margin:auto;padding:40px 20px}
+.tabs{display:flex;gap:10px;margin-bottom:30px}
+.tab{flex:1;padding:15px;background:#1e1e1e;border:none;color:#fff;cursor:pointer;border-radius:12px}
+.tab.active{background:linear-gradient(135deg,#d6004c,#7b1fa2)}
+.section{display:none}
+.section.active{display:block}
+.upload-box{background:#1e1e1e;padding:25px;border-radius:12px;margin-bottom:40px}
+input{width:100%;padding:12px;margin-bottom:15px;border-radius:8px;border:none}
+input[type=file]{background:#fff;color:#000}
+button{background:#d6004c;color:#fff;border:none;padding:12px 24px;border-radius:25px;cursor:pointer}
+button:disabled{background:#555}
+.upload-area{border:3px dashed #d6004c;border-radius:12px;padding:40px;text-align:center;cursor:pointer}
+.upload-area.dragover{background:#2a2a2a}
+.gallery{margin-top:40px}
+.video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px}
+.video-card{background:#1e1e1e;border-radius:12px;overflow:hidden}
+.video-card video{width:100%;height:200px;object-fit:cover}
+.video-info{padding:15px}
+.video-actions{display:flex;gap:10px;padding:0 15px 15px}
+.download-btn{flex:1;background:#d6004c;color:#fff;text-decoration:none;padding:8px;border-radius:8px;text-align:center}
+.delete-btn{flex:1;background:#444;color:#fff;border:none;border-radius:8px;cursor:pointer}
+.empty{text-align:center;color:#777;padding:60px}
+.progress{display:none;margin-top:15px}
+.progress-bar{height:25px;background:#333;border-radius:15px;overflow:hidden}
+.progress-fill{height:100%;width:0;background:linear-gradient(90deg,#d6004c,#7b1fa2);text-align:center;line-height:25px}
+footer{text-align:center;padding:20px;color:#777}
+</style>
 </head>
 
 <body>
 
 <header>
-    <h1>🎶 My Music Studio</h1>
-    <p>Gestione video locale con IndexedDB</p>
+<h1>🎶 My Music Studio</h1>
+<p>Crea e gestisci video localmente</p>
 </header>
 
 <div class="container">
 
-    <div class="tabs">
-        <button class="tab active" onclick="switchTab('import')">📤 Importa Video</button>
-    </div>
+<div class="tabs">
+<button class="tab active" onclick="switchTab('create')">🎬 Crea Video</button>
+<button class="tab" onclick="switchTab('import')">📤 Importa Video</button>
+</div>
 
-    <div id="importSection" class="section active">
-        <div class="upload-box">
-            <input id="importTitle" placeholder="Titolo video">
-            <input id="importArtist" placeholder="Artista">
+<!-- CREA VIDEO -->
+<div id="createSection" class="section active">
+<div class="upload-box">
+<input id="title" placeholder="Titolo">
+<input id="artist" placeholder="Artista">
+<label>Cover</label>
+<input type="file" id="coverFile" accept="image/*">
+<label>Audio</label>
+<input type="file" id="audioFile" accept="audio/*">
+<button onclick="createVideo()">Crea Video</button>
 
-            <div class="upload-area" id="uploadArea">
-                <p style="font-size:40px">🎬</p>
-                <p>Clicca o trascina un video</p>
-            </div>
+<div class="progress" id="progressBox">
+<div class="progress-bar">
+<div class="progress-fill" id="progressFill">0%</div>
+</div>
+</div>
+</div>
+</div>
 
-            <input type="file" id="importVideoFile" accept="video/*" hidden>
-            <button id="importBtn" onclick="importVideo()" disabled>Aggiungi alla galleria</button>
-        </div>
-    </div>
+<!-- IMPORT VIDEO -->
+<div id="importSection" class="section">
+<div class="upload-box">
+<input id="importTitle" placeholder="Titolo video">
+<input id="importArtist" placeholder="Artista">
+<div class="upload-area" id="uploadArea">🎬 Clicca o trascina video</div>
+<input type="file" id="importFile" accept="video/*" hidden>
+<button id="importBtn" disabled onclick="importVideo()">Aggiungi</button>
+</div>
+</div>
 
-    <div class="gallery" id="gallery" style="display:none">
-        <h2>🎬 Galleria Video</h2>
-        <div id="videoGrid" class="video-grid"></div>
-    </div>
+<!-- GALLERIA -->
+<div class="gallery" id="gallery" style="display:none">
+<h2>🎞️ Galleria</h2>
+<div id="videoGrid" class="video-grid"></div>
+</div>
 
-    <div class="empty-state" id="emptyState">
-        <h3>Nessun video</h3>
-        <p>Importa il tuo primo video</p>
-    </div>
+<div class="empty" id="empty">Nessun video</div>
 
 </div>
 
 <footer>© 2025 – My Music Studio</footer>
 
 <script>
-    const uploadArea = document.getElementById('uploadArea');
-    const importVideoFile = document.getElementById('importVideoFile');
-    const importBtn = document.getElementById('importBtn');
-    const importTitle = document.getElementById('importTitle');
-    const importArtist = document.getElementById('importArtist');
-    const videoGrid = document.getElementById('videoGrid');
-    const gallery = document.getElementById('gallery');
-    const emptyState = document.getElementById('emptyState');
+/* ---------------- UI ---------------- */
+function switchTab(t){
+document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'))
+document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'))
+if(t==='create'){document.querySelectorAll('.tab')[0].classList.add('active');createSection.classList.add('active')}
+else{document.querySelectorAll('.tab')[1].classList.add('active');importSection.classList.add('active')}
+}
 
-    let selectedFile = null;
+/* ---------------- IndexedDB ---------------- */
+function openDB(){
+return new Promise((res,rej)=>{
+const r=indexedDB.open("VideoDB",1)
+r.onupgradeneeded=e=>e.target.result.createObjectStore("videos",{keyPath:"id"})
+r.onsuccess=e=>res(e.target.result)
+r.onerror=e=>rej(e.target.error)
+})
+}
 
-    window.onload = loadGallery;
+async function saveVideo(blob,title,artist){
+const db=await openDB()
+const tx=db.transaction("videos","readwrite")
+tx.objectStore("videos").put({id:Date.now().toString(),blob,title,artist,date:Date.now()})
+return new Promise(r=>tx.oncomplete=r)
+}
 
-    uploadArea.onclick = () => importVideoFile.click();
-    importVideoFile.onchange = e => handleFile(e.target.files[0]);
+async function getVideos(){
+const db=await openDB()
+const tx=db.transaction("videos","readonly")
+return new Promise(r=>tx.objectStore("videos").getAll().onsuccess=e=>r(e.target.result))
+}
 
-    uploadArea.ondragover = e => {
-        e.preventDefault();
-        uploadArea.classList.add('dragover');
-    };
+async function deleteVideo(id){
+if(!confirm("Eliminare?"))return
+const db=await openDB()
+const tx=db.transaction("videos","readwrite")
+tx.objectStore("videos").delete(id)
+tx.oncomplete=loadGallery
+}
 
-    uploadArea.ondragleave = () => uploadArea.classList.remove('dragover');
+/* ---------------- CREATE VIDEO ---------------- */
+async function createVideo(){
+const title=titleInput.value,artist=artistInput.value
+const cover=coverFile.files[0],audioFileObj=audioFile.files[0]
+if(!title||!artist||!cover||!audioFileObj)return alert("Compila tutto")
 
-    uploadArea.ondrop = e => {
-        e.preventDefault();
-        uploadArea.classList.remove('dragover');
-        handleFile(e.dataTransfer.files[0]);
-    };
+progressBox.style.display="block"
+const canvas=document.createElement("canvas")
+canvas.width=1280;canvas.height=720
+const ctx=canvas.getContext("2d")
 
-    function handleFile(file) {
-        if (!file || !file.type.startsWith('video/')) return alert("File non valido");
-        selectedFile = file;
-        uploadArea.innerHTML = `<p>✅ ${file.name}</p>`;
-        importBtn.disabled = false;
-    }
+const img=new Image()
+img.src=URL.createObjectURL(cover)
+await img.decode()
 
-    /* ---------- IndexedDB ---------- */
-    function openDB() {
-        return new Promise((resolve, reject) => {
-            const req = indexedDB.open("VideoDB", 1);
-            req.onupgradeneeded = e => {
-                const db = e.target.result;
-                db.createObjectStore("videos", { keyPath: "id" });
-            };
-            req.onsuccess = e => resolve(e.target.result);
-            req.onerror = e => reject(e.target.error);
-        });
-    }
+ctx.fillStyle="#000";ctx.fillRect(0,0,canvas.width,canvas.height)
+const scale=Math.min(canvas.width/img.width,canvas.height/img.height)*0.7
+ctx.drawImage(img,(canvas.width-img.width*scale)/2,(canvas.height-img.height*scale)/2-40,img.width*scale,img.height*scale)
 
-    async function saveVideo(blob, title, artist) {
-        const db = await openDB();
-        const tx = db.transaction("videos", "readwrite");
-        const store = tx.objectStore("videos");
-        const id = Date.now().toString();
-        store.put({ id, blob, title, artist, date: Date.now() });
-        return new Promise(res => tx.oncomplete = () => res(id));
-    }
+ctx.fillStyle="#fff";ctx.font="48px Arial";ctx.textAlign="center"
+ctx.fillText(title,canvas.width/2,650)
+ctx.font="32px Arial";ctx.fillText(artist,canvas.width/2,700)
 
-    async function getVideos() {
-        const db = await openDB();
-        const tx = db.transaction("videos", "readonly");
-        const store = tx.objectStore("videos");
-        return new Promise(res => store.getAll().onsuccess = e => res(e.target.result));
-    }
+const audio=new Audio(URL.createObjectURL(audioFileObj))
+await audio.play().catch(()=>{})
+audio.pause();audio.currentTime=0
 
-    async function deleteVideo(id) {
-        if (!confirm("Eliminare il video?")) return;
-        const db = await openDB();
-        const tx = db.transaction("videos", "readwrite");
-        tx.objectStore("videos").delete(id);
-        tx.oncomplete = loadGallery;
-    }
+const stream=canvas.captureStream(30)
+const ac=new AudioContext()
+const src=ac.createMediaElementSource(audio)
+const dest=ac.createMediaStreamDestination()
+src.connect(dest);src.connect(ac.destination)
+stream.addTrack(dest.stream.getAudioTracks()[0])
 
-    async function importVideo() {
-        const title = importTitle.value || "Video importato";
-        const artist = importArtist.value || "Sconosciuto";
+const rec=new MediaRecorder(stream,{mimeType:"video/webm"})
+const chunks=[]
+rec.ondataavailable=e=>chunks.push(e.data)
+rec.onstop=async()=>{
+const blob=new Blob(chunks,{type:"video/webm"})
+await saveVideo(blob,title,artist)
+progressFill.style.width="100%";progressFill.textContent="100%"
+loadGallery()
+}
 
-        const reader = new FileReader();
-        reader.onload = async () => {
-            await saveVideo(new Blob([reader.result]), title, artist);
-            importVideoFile.value = "";
-            uploadArea.innerHTML = "<p>🎬 Clicca o trascina un video</p>";
-            importBtn.disabled = true;
-            loadGallery();
-        };
-        reader.readAsArrayBuffer(selectedFile);
-    }
+rec.start()
+audio.play()
+const dur=audio.duration||60
+const i=setInterval(()=>{
+progressFill.style.width=(audio.currentTime/dur*100)+"%"
+progressFill.textContent=Math.round(audio.currentTime/dur*100)+"%"
+},500)
+audio.onended=()=>{clearInterval(i);rec.stop()}
+}
 
-    async function loadGallery() {
-        const videos = await getVideos();
-        videoGrid.innerHTML = "";
+/* ---------------- IMPORT VIDEO ---------------- */
+let selectedFile=null
+uploadArea.onclick=()=>importFile.click()
+importFile.onchange=e=>handleFile(e.target.files[0])
+uploadArea.ondragover=e=>{e.preventDefault();uploadArea.classList.add("dragover")}
+uploadArea.ondragleave=()=>uploadArea.classList.remove("dragover")
+uploadArea.ondrop=e=>{e.preventDefault();uploadArea.classList.remove("dragover");handleFile(e.dataTransfer.files[0])}
 
-        if (videos.length === 0) {
-            gallery.style.display = "none";
-            emptyState.style.display = "block";
-            return;
-        }
+function handleFile(f){
+if(!f||!f.type.startsWith("video/"))return
+selectedFile=f
+uploadArea.innerHTML="✅ "+f.name
+importBtn.disabled=false
+}
 
-        videos.sort((a, b) => b.date - a.date).forEach(v => {
-            const url = URL.createObjectURL(v.blob);
-            const card = document.createElement("div");
-            card.className = "video-card";
-            card.innerHTML = `
-                <video src="${url}" controls></video>
-                <div class="video-info">
-                    <strong>${v.title}</strong><br>
-                    <small>${v.artist}</small>
-                </div>
-                <div class="video-actions">
-                    <a class="download-btn" href="${url}" download="${v.title}.webm">Scarica</a>
-                    <button class="delete-btn" onclick="deleteVideo('${v.id}')">Elimina</button>
-                </div>
-            `;
-            videoGrid.appendChild(card);
-        });
+function importVideo(){
+const r=new FileReader()
+r.onload=async()=>{
+await saveVideo(new Blob([r.result]),importTitle.value||"Video",importArtist.value||"")
+loadGallery()
+importBtn.disabled=true
+uploadArea.innerHTML="🎬 Clicca o trascina video"
+}
+r.readAsArrayBuffer(selectedFile)
+}
 
-        gallery.style.display = "block";
-        emptyState.style.display = "none";
-    }
+/* ---------------- GALLERY ---------------- */
+async function loadGallery(){
+const vids=await getVideos()
+videoGrid.innerHTML=""
+if(!vids.length){gallery.style.display="none";empty.style.display="block";return}
+vids.sort((a,b)=>b.date-a.date).forEach(v=>{
+const url=URL.createObjectURL(v.blob)
+videoGrid.innerHTML+=`
+<div class="video-card">
+<video src="${url}" controls></video>
+<div class="video-info"><b>${v.title}</b><br>${v.artist}</div>
+<div class="video-actions">
+<a class="download-btn" href="${url}" download="${v.title}.webm">Scarica</a>
+<button class="delete-btn" onclick="deleteVideo('${v.id}')">Elimina</button>
+</div>
+</div>`
+})
+gallery.style.display="block";empty.style.display="none"
+}
+window.onload=loadGallery
 </script>
 
 </body>
 </html>
+
