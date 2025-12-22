@@ -30,11 +30,14 @@ button:disabled{background:#555;cursor:not-allowed}
 .video-actions{display:flex;gap:10px;padding:0 15px 15px}
 .download-btn{flex:1;background:#d6004c;color:#fff;text-decoration:none;padding:8px;border-radius:8px;text-align:center}
 .delete-btn{flex:1;background:#444;color:#fff;border:none;border-radius:8px;cursor:pointer}
+.view-btn{flex:1;background:#7b1fa2;color:#fff;border:none;border-radius:8px;cursor:pointer}
 .empty{text-align:center;color:#777;padding:60px}
 .progress{display:none;margin-top:15px}
 .progress-bar{height:25px;background:#333;border-radius:15px;overflow:hidden}
 .progress-fill{height:100%;width:0;background:linear-gradient(90deg,#d6004c,#7b1fa2);text-align:center;line-height:25px;transition:width 0.3s}
 .status{margin-top:10px;color:#aaa;font-size:14px}
+.pdf-card{background:#1e1e1e;border-radius:12px;overflow:hidden;padding:20px}
+.pdf-icon{font-size:80px;text-align:center;margin-bottom:15px}
 footer{text-align:center;padding:20px;color:#777}
 </style>
 </head>
@@ -43,7 +46,7 @@ footer{text-align:center;padding:20px;color:#777}
 
 <header>
 <h1>🎶 My Music Studio</h1>
-<p>Crea e gestisci video localmente</p>
+<p>Crea e gestisci video e PDF localmente</p>
 </header>
 
 <div class="container">
@@ -51,6 +54,7 @@ footer{text-align:center;padding:20px;color:#777}
 <div class="tabs">
 <button class="tab active" onclick="switchTab('create')">🎬 Crea Video</button>
 <button class="tab" onclick="switchTab('import')">📤 Importa Video</button>
+<button class="tab" onclick="switchTab('pdf')">📄 Importa PDF</button>
 </div>
 
 <!-- CREA VIDEO -->
@@ -80,17 +84,34 @@ footer{text-align:center;padding:20px;color:#777}
 <input id="importArtist" placeholder="Artista">
 <div class="upload-area" id="uploadArea">🎬 Clicca o trascina video</div>
 <input type="file" id="importFile" accept="video/*" hidden>
-<button id="importBtn" disabled onclick="importVideo()">Aggiungi</button>
+<button id="importBtn" disabled onclick="importVideo()">Aggiungi Video</button>
 </div>
 </div>
 
-<!-- GALLERIA -->
+<!-- IMPORT PDF -->
+<div id="pdfSection" class="section">
+<div class="upload-box">
+<input id="pdfTitle" placeholder="Titolo PDF">
+<input id="pdfDescription" placeholder="Descrizione (opzionale)">
+<div class="upload-area" id="pdfUploadArea">📄 Clicca o trascina PDF</div>
+<input type="file" id="pdfFile" accept="application/pdf" hidden>
+<button id="pdfBtn" disabled onclick="importPDF()">Aggiungi PDF</button>
+</div>
+</div>
+
+<!-- GALLERIA VIDEO -->
 <div class="gallery" id="gallery" style="display:none">
-<h2>🎞️ Galleria</h2>
+<h2>🎞️ Video</h2>
 <div id="videoGrid" class="video-grid"></div>
 </div>
 
-<div class="empty" id="empty">Nessun video</div>
+<!-- GALLERIA PDF -->
+<div class="gallery" id="pdfGallery" style="display:none">
+<h2>📄 Documenti PDF</h2>
+<div id="pdfGrid" class="video-grid"></div>
+</div>
+
+<div class="empty" id="empty">Nessun contenuto</div>
 
 </div>
 
@@ -104,17 +125,28 @@ document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'))
 if(t==='create'){
 document.querySelectorAll('.tab')[0].classList.add('active')
 document.getElementById('createSection').classList.add('active')
-}else{
+}else if(t==='import'){
 document.querySelectorAll('.tab')[1].classList.add('active')
 document.getElementById('importSection').classList.add('active')
+}else{
+document.querySelectorAll('.tab')[2].classList.add('active')
+document.getElementById('pdfSection').classList.add('active')
 }
 }
 
 /* ---------------- IndexedDB ---------------- */
 function openDB(){
 return new Promise((res,rej)=>{
-const r=indexedDB.open("VideoDB",1)
-r.onupgradeneeded=e=>e.target.result.createObjectStore("videos",{keyPath:"id"})
+const r=indexedDB.open("VideoDB",2)
+r.onupgradeneeded=e=>{
+const db = e.target.result
+if(!db.objectStoreNames.contains("videos")){
+db.createObjectStore("videos",{keyPath:"id"})
+}
+if(!db.objectStoreNames.contains("pdfs")){
+db.createObjectStore("pdfs",{keyPath:"id"})
+}
+}
 r.onsuccess=e=>res(e.target.result)
 r.onerror=e=>rej(e.target.error)
 })
@@ -123,7 +155,14 @@ r.onerror=e=>rej(e.target.error)
 async function saveVideo(blob,title,artist){
 const db=await openDB()
 const tx=db.transaction("videos","readwrite")
-tx.objectStore("videos").put({id:Date.now().toString(),blob,title,artist,date:Date.now()})
+tx.objectStore("videos").put({id:Date.now().toString(),blob,title,artist,date:Date.now(),type:'video'})
+return new Promise(r=>tx.oncomplete=r)
+}
+
+async function savePDF(blob,title,description){
+const db=await openDB()
+const tx=db.transaction("pdfs","readwrite")
+tx.objectStore("pdfs").put({id:Date.now().toString(),blob,title,description,date:Date.now(),type:'pdf'})
 return new Promise(r=>tx.oncomplete=r)
 }
 
@@ -133,11 +172,25 @@ const tx=db.transaction("videos","readonly")
 return new Promise(r=>tx.objectStore("videos").getAll().onsuccess=e=>r(e.target.result))
 }
 
+async function getPDFs(){
+const db=await openDB()
+const tx=db.transaction("pdfs","readonly")
+return new Promise(r=>tx.objectStore("pdfs").getAll().onsuccess=e=>r(e.target.result))
+}
+
 async function deleteVideo(id){
 if(!confirm("Eliminare?"))return
 const db=await openDB()
 const tx=db.transaction("videos","readwrite")
 tx.objectStore("videos").delete(id)
+tx.oncomplete=loadGallery
+}
+
+async function deletePDF(id){
+if(!confirm("Eliminare questo PDF?"))return
+const db=await openDB()
+const tx=db.transaction("pdfs","readwrite")
+tx.objectStore("pdfs").delete(id)
 tx.oncomplete=loadGallery
 }
 
@@ -162,13 +215,11 @@ createBtn.disabled = true
 progressBox.style.display = "block"
 status.textContent = "Caricamento cover..."
 
-// Canvas setup
 const canvas = document.createElement("canvas")
 canvas.width = 1280
 canvas.height = 720
 const ctx = canvas.getContext("2d")
 
-// Load image
 const img = new Image()
 const imgUrl = URL.createObjectURL(coverFile)
 img.src = imgUrl
@@ -177,19 +228,15 @@ img.onload = resolve
 img.onerror = reject
 })
 
-// Funzione per disegnare il frame
 function drawFrame() {
-// Background nero
 ctx.fillStyle = "#000"
 ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-// Disegna immagine centrata
 const scale = Math.min(canvas.width/img.width, canvas.height/img.height) * 0.7
 const x = (canvas.width - img.width * scale) / 2
 const y = (canvas.height - img.height * scale) / 2 - 40
 ctx.drawImage(img, x, y, img.width * scale, img.height * scale)
 
-// Testo
 ctx.fillStyle = "#fff"
 ctx.font = "bold 48px Arial"
 ctx.textAlign = "center"
@@ -201,12 +248,10 @@ ctx.fillText(artist, canvas.width/2, 700)
 ctx.shadowBlur = 0
 }
 
-// Disegna il primo frame
 drawFrame()
 
 status.textContent = "Caricamento audio..."
 
-// Load audio
 const audio = new Audio()
 const audioUrl = URL.createObjectURL(audioFileObj)
 audio.src = audioUrl
@@ -221,7 +266,6 @@ const duration = audio.duration
 
 status.textContent = "Creazione video in corso..."
 
-// Setup MediaRecorder con stream a 30fps
 const stream = canvas.captureStream(30)
 const audioContext = new AudioContext()
 const source = audioContext.createMediaElementSource(audio)
@@ -266,16 +310,13 @@ URL.revokeObjectURL(audioUrl)
 URL.revokeObjectURL(imgUrl)
 }
 
-// Ridisegna continuamente il frame per mantenere il video "vivo"
 const renderLoop = setInterval(() => {
 drawFrame()
-}, 33) // ~30fps
+}, 33)
 
-// Start recording
 recorder.start()
 audio.play()
 
-// Update progress
 const updateProgress = () => {
 const progress = (audio.currentTime / duration * 100)
 progressFill.style.width = progress + "%"
@@ -347,31 +388,112 @@ document.getElementById('importTitle').value = ""
 document.getElementById('importArtist').value = ""
 uploadArea.innerHTML = "🎬 Clicca o trascina video"
 selectedFile = null
-importBtn.textContent = "Aggiungi"
+importBtn.textContent = "Aggiungi Video"
+importBtn.disabled = true
 } catch(error) {
 console.error("Errore importazione:", error)
 alert("Errore nell'importazione: " + error.message)
 importBtn.disabled = false
-importBtn.textContent = "Aggiungi"
+importBtn.textContent = "Aggiungi Video"
 }
+}
+
+/* ---------------- IMPORT PDF ---------------- */
+let selectedPDF = null
+const pdfUploadArea = document.getElementById('pdfUploadArea')
+const pdfFileInput = document.getElementById('pdfFile')
+const pdfBtn = document.getElementById('pdfBtn')
+
+pdfUploadArea.onclick = () => pdfFileInput.click()
+pdfFileInput.onchange = e => handlePDFFile(e.target.files[0])
+pdfUploadArea.ondragover = e => {
+e.preventDefault()
+pdfUploadArea.classList.add("dragover")
+}
+pdfUploadArea.ondragleave = () => pdfUploadArea.classList.remove("dragover")
+pdfUploadArea.ondrop = e => {
+e.preventDefault()
+pdfUploadArea.classList.remove("dragover")
+handlePDFFile(e.dataTransfer.files[0])
+}
+
+function handlePDFFile(f){
+if(!f || f.type !== "application/pdf") {
+alert("Seleziona un file PDF valido")
+return
+}
+selectedPDF = f
+pdfUploadArea.innerHTML = "✅ " + f.name
+pdfBtn.disabled = false
+}
+
+async function importPDF(){
+if(!selectedPDF) return
+
+const title = document.getElementById('pdfTitle').value || selectedPDF.name
+const description = document.getElementById('pdfDescription').value || ""
+
+pdfBtn.disabled = true
+pdfBtn.textContent = "Importazione..."
+
+try {
+const arrayBuffer = await selectedPDF.arrayBuffer()
+const blob = new Blob([arrayBuffer], {type: 'application/pdf'})
+await savePDF(blob, title, description)
+loadGallery()
+
+document.getElementById('pdfTitle').value = ""
+document.getElementById('pdfDescription').value = ""
+pdfUploadArea.innerHTML = "📄 Clicca o trascina PDF"
+selectedPDF = null
+pdfBtn.textContent = "Aggiungi PDF"
+pdfBtn.disabled = true
+} catch(error) {
+console.error("Errore importazione PDF:", error)
+alert("Errore nell'importazione PDF: " + error.message)
+pdfBtn.disabled = false
+pdfBtn.textContent = "Aggiungi PDF"
+}
+}
+
+function viewPDF(id, title){
+getPDFs().then(pdfs => {
+const pdf = pdfs.find(p => p.id === id)
+if(pdf){
+const url = URL.createObjectURL(pdf.blob)
+window.open(url, '_blank')
+}
+})
 }
 
 /* ---------------- GALLERY ---------------- */
 async function loadGallery(){
 try {
 const vids = await getVideos()
+const pdfs = await getPDFs()
 const videoGrid = document.getElementById('videoGrid')
+const pdfGrid = document.getElementById('pdfGrid')
 const gallery = document.getElementById('gallery')
+const pdfGallery = document.getElementById('pdfGallery')
 const empty = document.getElementById('empty')
 
 videoGrid.innerHTML = ""
+pdfGrid.innerHTML = ""
 
-if(!vids.length){
+const hasVideos = vids.length > 0
+const hasPDFs = pdfs.length > 0
+
+if(!hasVideos && !hasPDFs){
 gallery.style.display = "none"
+pdfGallery.style.display = "none"
 empty.style.display = "block"
 return
 }
 
+empty.style.display = "none"
+
+// Load videos
+if(hasVideos){
 vids.sort((a,b) => b.date - a.date).forEach(v => {
 const url = URL.createObjectURL(v.blob)
 const card = document.createElement('div')
@@ -386,7 +508,34 @@ card.innerHTML = `
 videoGrid.appendChild(card)
 })
 gallery.style.display = "block"
-empty.style.display = "none"
+}else{
+gallery.style.display = "none"
+}
+
+// Load PDFs
+if(hasPDFs){
+pdfs.sort((a,b) => b.date - a.date).forEach(p => {
+const url = URL.createObjectURL(p.blob)
+const card = document.createElement('div')
+card.className = 'video-card pdf-card'
+card.innerHTML = `
+<div class="pdf-icon">📄</div>
+<div class="video-info">
+<b>${p.title}</b><br>
+<small style="color:#999">${p.description || 'Nessuna descrizione'}</small>
+</div>
+<div class="video-actions">
+<button class="view-btn" onclick="viewPDF('${p.id}', '${p.title}')">Visualizza</button>
+<a class="download-btn" href="${url}" download="${p.title}.pdf">Scarica</a>
+<button class="delete-btn" onclick="deletePDF('${p.id}')">Elimina</button>
+</div>`
+pdfGrid.appendChild(card)
+})
+pdfGallery.style.display = "block"
+}else{
+pdfGallery.style.display = "none"
+}
+
 } catch(error) {
 console.error("Errore caricamento galleria:", error)
 }
