@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>My Music Studio – Cover Video</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+*{box-sizing:border-box;font-family:Arial,sans-serif}
+body{margin:0;background:#111;color:#fff}
+header{padding:30px;text-align:center;background:linear-gradient(135deg,#d6004c,#7b1fa2)}
+.container{max-width:1000px;margin:auto;padding:40px 20px}
+.tabs{display:flex;gap:10px;margin-bottom:30px}
+.tab{flex:1;padding:15px;background:#1e1e1e;border:none;color:#fff;cursor:pointer;border-radius:12px}
+.tab.active{background:linear-gradient(135deg,#d6004c,#7b1fa2)}
+.section{display:none}
+.section.active{display:block}
+.upload-box{background:#1e1e1e;padding:25px;border-radius:12px;margin-bottom:40px}
+input{width:100%;padding:12px;margin-bottom:15px;border-radius:8px;border:none}
+input[type=file]{background:#fff;color:#000}
+button{background:#d6004c;color:#fff;border:none;padding:12px 24px;border-radius:25px;cursor:pointer}
+button:disabled{background:#555;cursor:not-allowed}
+.upload-area{border:3px dashed #d6004c;border-radius:12px;padding:40px;text-align:center;cursor:pointer}
+.upload-area.dragover{background:#2a2a2a}
+.gallery{margin-top:40px}
+.video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px}
+.video-card{background:#1e1e1e;border-radius:12px;overflow:hidden}
+.video-card video{width:100%;height:200px;object-fit:cover}
+.video-info{padding:15px}
+.video-actions{display:flex;gap:10px;padding:0 15px 15px}
+.download-btn{flex:1;background:#d6004c;color:#fff;text-decoration:none;padding:8px;border-radius:8px;text-align:center}
+.delete-btn{flex:1;background:#444;color:#fff;border:none;border-radius:8px;cursor:pointer}
+.empty{text-align:center;color:#777;padding:60px}
+.progress{display:none;margin-top:15px}
+.progress-bar{height:25px;background:#333;border-radius:15px;overflow:hidden}
+.progress-fill{height:100%;width:0;background:linear-gradient(90deg,#d6004c,#7b1fa2);text-align:center;line-height:25px;transition:width 0.3s}
+.status{margin-top:10px;color:#aaa;font-size:14px}
+footer{text-align:center;padding:20px;color:#777}
+</style>
+</head>
+
+<body>
+
+<header>
+<h1>🎶 My Music Studio</h1>
+<p>Crea e gestisci video localmente</p>
+</header>
+
+<div class="container">
+
+<div class="tabs">
+<button class="tab active" onclick="switchTab('create')">🎬 Crea Video</button>
+<button class="tab" onclick="switchTab('import')">📤 Importa Video</button>
+</div>
+
+<!-- CREA VIDEO -->
+<div id="createSection" class="section active">
+<div class="upload-box">
+<input id="title" placeholder="Titolo">
+<input id="artist" placeholder="Artista">
+<label>Cover</label>
+<input type="file" id="coverFile" accept="image/*">
+<label>Audio</label>
+<input type="file" id="audioFile" accept="audio/*">
+<button id="createBtn" onclick="createVideo()">Crea Video</button>
+
+<div class="progress" id="progressBox">
+<div class="progress-bar">
+<div class="progress-fill" id="progressFill">0%</div>
+</div>
+<div class="status" id="status"></div>
+</div>
+</div>
+</div>
+
+<!-- IMPORT VIDEO -->
+<div id="importSection" class="section">
+<div class="upload-box">
+<input id="importTitle" placeholder="Titolo video">
+<input id="importArtist" placeholder="Artista">
+<div class="upload-area" id="uploadArea">🎬 Clicca o trascina video</div>
+<input type="file" id="importFile" accept="video/*" hidden>
+<button id="importBtn" disabled onclick="importVideo()">Aggiungi</button>
+</div>
+</div>
+
+<!-- GALLERIA -->
+<div class="gallery" id="gallery" style="display:none">
+<h2>🎞️ Galleria</h2>
+<div id="videoGrid" class="video-grid"></div>
+</div>
+
+<div class="empty" id="empty">Nessun video</div>
+
+</div>
+
+<footer>© 2025 – My Music Studio</footer>
+
+<script>
+/* ---------------- UI ---------------- */
+function switchTab(t){
+document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'))
+document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'))
+if(t==='create'){
+document.querySelectorAll('.tab')[0].classList.add('active')
+document.getElementById('createSection').classList.add('active')
+}else{
+document.querySelectorAll('.tab')[1].classList.add('active')
+document.getElementById('importSection').classList.add('active')
+}
+}
+
+/* ---------------- IndexedDB ---------------- */
+function openDB(){
+return new Promise((res,rej)=>{
+const r=indexedDB.open("VideoDB",1)
+r.onupgradeneeded=e=>e.target.result.createObjectStore("videos",{keyPath:"id"})
+r.onsuccess=e=>res(e.target.result)
+r.onerror=e=>rej(e.target.error)
+})
+}
+
+async function saveVideo(blob,title,artist){
+const db=await openDB()
+const tx=db.transaction("videos","readwrite")
+tx.objectStore("videos").put({id:Date.now().toString(),blob,title,artist,date:Date.now()})
+return new Promise(r=>tx.oncomplete=r)
+}
+
+async function getVideos(){
+const db=await openDB()
+const tx=db.transaction("videos","readonly")
+return new Promise(r=>tx.objectStore("videos").getAll().onsuccess=e=>r(e.target.result))
+}
+
+async function deleteVideo(id){
+if(!confirm("Eliminare?"))return
+const db=await openDB()
+const tx=db.transaction("videos","readwrite")
+tx.objectStore("videos").delete(id)
+tx.oncomplete=loadGallery
+}
+
+/* ---------------- CREATE VIDEO ---------------- */
+async function createVideo(){
+const title = document.getElementById('title').value
+const artist = document.getElementById('artist').value
+const coverFile = document.getElementById('coverFile').files[0]
+const audioFileObj = document.getElementById('audioFile').files[0]
+const createBtn = document.getElementById('createBtn')
+const progressBox = document.getElementById('progressBox')
+const progressFill = document.getElementById('progressFill')
+const status = document.getElementById('status')
+
+if(!title||!artist||!coverFile||!audioFileObj){
+alert("Compila tutti i campi e seleziona cover e audio")
+return
+}
+
+try {
+createBtn.disabled = true
+progressBox.style.display = "block"
+status.textContent = "Caricamento cover..."
+
+// Canvas setup
+const canvas = document.createElement("canvas")
+canvas.width = 1280
+canvas.height = 720
+const ctx = canvas.getContext("2d")
+
+// Load image
+const img = new Image()
+const imgUrl = URL.createObjectURL(coverFile)
+img.src = imgUrl
+await new Promise((resolve, reject) => {
+img.onload = resolve
+img.onerror = reject
+})
+
+// Funzione per disegnare il frame
+function drawFrame() {
+// Background nero
+ctx.fillStyle = "#000"
+ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+// Disegna immagine centrata
+const scale = Math.min(canvas.width/img.width, canvas.height/img.height) * 0.7
+const x = (canvas.width - img.width * scale) / 2
+const y = (canvas.height - img.height * scale) / 2 - 40
+ctx.drawImage(img, x, y, img.width * scale, img.height * scale)
+
+// Testo
+ctx.fillStyle = "#fff"
+ctx.font = "bold 48px Arial"
+ctx.textAlign = "center"
+ctx.shadowColor = "rgba(0,0,0,0.8)"
+ctx.shadowBlur = 10
+ctx.fillText(title, canvas.width/2, 650)
+ctx.font = "32px Arial"
+ctx.fillText(artist, canvas.width/2, 700)
+ctx.shadowBlur = 0
+}
+
+// Disegna il primo frame
+drawFrame()
+
+status.textContent = "Caricamento audio..."
+
+// Load audio
+const audio = new Audio()
+const audioUrl = URL.createObjectURL(audioFileObj)
+audio.src = audioUrl
+audio.volume = 1.0
+
+await new Promise((resolve, reject) => {
+audio.addEventListener('loadedmetadata', resolve, {once: true})
+audio.addEventListener('error', reject, {once: true})
+})
+
+const duration = audio.duration
+
+status.textContent = "Creazione video in corso..."
+
+// Setup MediaRecorder con stream a 30fps
+const stream = canvas.captureStream(30)
+const audioContext = new AudioContext()
+const source = audioContext.createMediaElementSource(audio)
+const destination = audioContext.createMediaStreamDestination()
+source.connect(destination)
+source.connect(audioContext.destination)
+
+const audioTrack = destination.stream.getAudioTracks()[0]
+stream.addTrack(audioTrack)
+
+const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
+  ? 'video/webm;codecs=vp9,opus' 
+  : 'video/webm'
+
+const recorder = new MediaRecorder(stream, {
+  mimeType,
+  videoBitsPerSecond: 2500000
+})
+const chunks = []
+
+recorder.ondataavailable = e => {
+if(e.data.size > 0) chunks.push(e.data)
+}
+
+recorder.onstop = async () => {
+const blob = new Blob(chunks, {type: 'video/webm'})
+status.textContent = "Salvataggio..."
+await saveVideo(blob, title, artist)
+status.textContent = "✅ Video creato con successo!"
+setTimeout(() => {
+progressBox.style.display = "none"
+progressFill.style.width = "0%"
+progressFill.textContent = "0%"
+createBtn.disabled = false
+document.getElementById('title').value = ""
+document.getElementById('artist').value = ""
+document.getElementById('coverFile').value = ""
+document.getElementById('audioFile').value = ""
+}, 2000)
+loadGallery()
+URL.revokeObjectURL(audioUrl)
+URL.revokeObjectURL(imgUrl)
+}
+
+// Ridisegna continuamente il frame per mantenere il video "vivo"
+const renderLoop = setInterval(() => {
+drawFrame()
+}, 33) // ~30fps
+
+// Start recording
+recorder.start()
+audio.play()
+
+// Update progress
+const updateProgress = () => {
+const progress = (audio.currentTime / duration * 100)
+progressFill.style.width = progress + "%"
+progressFill.textContent = Math.round(progress) + "%"
+}
+
+const progressInterval = setInterval(updateProgress, 500)
+
+audio.onended = () => {
+clearInterval(progressInterval)
+clearInterval(renderLoop)
+recorder.stop()
+audioContext.close()
+}
+
+} catch(error) {
+console.error("Errore:", error)
+alert("Errore nella creazione del video: " + error.message)
+createBtn.disabled = false
+progressBox.style.display = "none"
+}
+}
+
+/* ---------------- IMPORT VIDEO ---------------- */
+let selectedFile = null
+const uploadArea = document.getElementById('uploadArea')
+const importFile = document.getElementById('importFile')
+const importBtn = document.getElementById('importBtn')
+
+uploadArea.onclick = () => importFile.click()
+importFile.onchange = e => handleFile(e.target.files[0])
+uploadArea.ondragover = e => {
+e.preventDefault()
+uploadArea.classList.add("dragover")
+}
+uploadArea.ondragleave = () => uploadArea.classList.remove("dragover")
+uploadArea.ondrop = e => {
+e.preventDefault()
+uploadArea.classList.remove("dragover")
+handleFile(e.dataTransfer.files[0])
+}
+
+function handleFile(f){
+if(!f || !f.type.startsWith("video/")) {
+alert("Seleziona un file video valido")
+return
+}
+selectedFile = f
+uploadArea.innerHTML = "✅ " + f.name
+importBtn.disabled = false
+}
+
+async function importVideo(){
+if(!selectedFile) return
+
+const title = document.getElementById('importTitle').value || "Video"
+const artist = document.getElementById('importArtist').value || ""
+
+importBtn.disabled = true
+importBtn.textContent = "Importazione..."
+
+try {
+const arrayBuffer = await selectedFile.arrayBuffer()
+const blob = new Blob([arrayBuffer], {type: selectedFile.type})
+await saveVideo(blob, title, artist)
+loadGallery()
+
+document.getElementById('importTitle').value = ""
+document.getElementById('importArtist').value = ""
+uploadArea.innerHTML = "🎬 Clicca o trascina video"
+selectedFile = null
+importBtn.textContent = "Aggiungi"
+} catch(error) {
+console.error("Errore importazione:", error)
+alert("Errore nell'importazione: " + error.message)
+importBtn.disabled = false
+importBtn.textContent = "Aggiungi"
+}
+}
+
+/* ---------------- GALLERY ---------------- */
+async function loadGallery(){
+try {
+const vids = await getVideos()
+const videoGrid = document.getElementById('videoGrid')
+const gallery = document.getElementById('gallery')
+const empty = document.getElementById('empty')
+
+videoGrid.innerHTML = ""
+
+if(!vids.length){
+gallery.style.display = "none"
+empty.style.display = "block"
+return
+}
+
+vids.sort((a,b) => b.date - a.date).forEach(v => {
+const url = URL.createObjectURL(v.blob)
+const card = document.createElement('div')
+card.className = 'video-card'
+card.innerHTML = `
+<video src="${url}" controls preload="metadata"></video>
+<div class="video-info"><b>${v.title}</b><br>${v.artist}</div>
+<div class="video-actions">
+<a class="download-btn" href="${url}" download="${v.title}.webm">Scarica</a>
+<button class="delete-btn" onclick="deleteVideo('${v.id}')">Elimina</button>
+</div>`
+videoGrid.appendChild(card)
+})
+gallery.style.display = "block"
+empty.style.display = "none"
+} catch(error) {
+console.error("Errore caricamento galleria:", error)
+}
+}
+
+window.onload = loadGallery
+</script>
+
+</body>
+</html>
