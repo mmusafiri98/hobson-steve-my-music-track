@@ -177,23 +177,32 @@ img.onload = resolve
 img.onerror = reject
 })
 
-// Draw background and image
+// Funzione per disegnare il frame
+function drawFrame() {
+// Background nero
 ctx.fillStyle = "#000"
 ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+// Disegna immagine centrata
 const scale = Math.min(canvas.width/img.width, canvas.height/img.height) * 0.7
 const x = (canvas.width - img.width * scale) / 2
 const y = (canvas.height - img.height * scale) / 2 - 40
 ctx.drawImage(img, x, y, img.width * scale, img.height * scale)
 
-// Draw text
+// Testo
 ctx.fillStyle = "#fff"
 ctx.font = "bold 48px Arial"
 ctx.textAlign = "center"
+ctx.shadowColor = "rgba(0,0,0,0.8)"
+ctx.shadowBlur = 10
 ctx.fillText(title, canvas.width/2, 650)
 ctx.font = "32px Arial"
 ctx.fillText(artist, canvas.width/2, 700)
+ctx.shadowBlur = 0
+}
 
-URL.revokeObjectURL(imgUrl)
+// Disegna il primo frame
+drawFrame()
 
 status.textContent = "Caricamento audio..."
 
@@ -204,15 +213,15 @@ audio.src = audioUrl
 audio.volume = 1.0
 
 await new Promise((resolve, reject) => {
-audio.addEventListener('loadedmetadata', resolve)
-audio.addEventListener('error', reject)
+audio.addEventListener('loadedmetadata', resolve, {once: true})
+audio.addEventListener('error', reject, {once: true})
 })
 
 const duration = audio.duration
 
 status.textContent = "Creazione video in corso..."
 
-// Setup MediaRecorder
+// Setup MediaRecorder con stream a 30fps
 const stream = canvas.captureStream(30)
 const audioContext = new AudioContext()
 const source = audioContext.createMediaElementSource(audio)
@@ -223,11 +232,14 @@ source.connect(audioContext.destination)
 const audioTrack = destination.stream.getAudioTracks()[0]
 stream.addTrack(audioTrack)
 
-const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') 
-  ? 'video/webm;codecs=vp9' 
+const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
+  ? 'video/webm;codecs=vp9,opus' 
   : 'video/webm'
 
-const recorder = new MediaRecorder(stream, {mimeType})
+const recorder = new MediaRecorder(stream, {
+  mimeType,
+  videoBitsPerSecond: 2500000
+})
 const chunks = []
 
 recorder.ondataavailable = e => {
@@ -251,7 +263,13 @@ document.getElementById('audioFile').value = ""
 }, 2000)
 loadGallery()
 URL.revokeObjectURL(audioUrl)
+URL.revokeObjectURL(imgUrl)
 }
+
+// Ridisegna continuamente il frame per mantenere il video "vivo"
+const renderLoop = setInterval(() => {
+drawFrame()
+}, 33) // ~30fps
 
 // Start recording
 recorder.start()
@@ -268,6 +286,7 @@ const progressInterval = setInterval(updateProgress, 500)
 
 audio.onended = () => {
 clearInterval(progressInterval)
+clearInterval(renderLoop)
 recorder.stop()
 audioContext.close()
 }
@@ -358,7 +377,7 @@ const url = URL.createObjectURL(v.blob)
 const card = document.createElement('div')
 card.className = 'video-card'
 card.innerHTML = `
-<video src="${url}" controls></video>
+<video src="${url}" controls preload="metadata"></video>
 <div class="video-info"><b>${v.title}</b><br>${v.artist}</div>
 <div class="video-actions">
 <a class="download-btn" href="${url}" download="${v.title}.webm">Scarica</a>
