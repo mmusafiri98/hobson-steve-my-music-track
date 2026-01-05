@@ -18,6 +18,7 @@ header{padding:30px;text-align:center;background:linear-gradient(135deg,#d6004c,
 .upload-box{background:#1e1e1e;padding:25px;border-radius:12px;margin-bottom:40px}
 input{width:100%;padding:12px;margin-bottom:15px;border-radius:8px;border:none}
 input[type=file]{background:#fff;color:#000}
+label{display:block;margin-top:10px;margin-bottom:5px;color:#aaa}
 button{background:#d6004c;color:#fff;border:none;padding:12px 24px;border-radius:25px;cursor:pointer}
 button:disabled{background:#555;cursor:not-allowed}
 .upload-area{border:3px dashed #d6004c;border-radius:12px;padding:40px;text-align:center;cursor:pointer}
@@ -28,10 +29,10 @@ button:disabled{background:#555;cursor:not-allowed}
 .video-card video{width:100%;height:200px;object-fit:cover}
 .video-info{padding:15px}
 .video-actions{display:flex;gap:10px;padding:0 15px 15px}
-.download-btn{flex:1;background:#d6004c;color:#fff;text-decoration:none;padding:8px;border-radius:8px;text-align:center}
-.delete-btn{flex:1;background:#444;color:#fff;border:none;border-radius:8px;cursor:pointer}
-.view-btn{flex:1;background:#7b1fa2;color:#fff;border:none;border-radius:8px;cursor:pointer}
-.play-btn{flex:1;background:#4caf50;color:#fff;border:none;border-radius:8px;cursor:pointer}
+.download-btn{flex:1;background:#d6004c;color:#fff;text-decoration:none;padding:8px;border-radius:8px;text-align:center;display:flex;align-items:center;justify-content:center}
+.delete-btn{flex:1;background:#444;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:8px}
+.view-btn{flex:1;background:#7b1fa2;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:8px}
+.play-btn{flex:1;background:#4caf50;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:8px}
 .empty{text-align:center;color:#777;padding:60px}
 .progress{display:none;margin-top:15px}
 .progress-bar{height:25px;background:#333;border-radius:15px;overflow:hidden}
@@ -62,11 +63,11 @@ footer{text-align:center;padding:20px;color:#777}
 <!-- CREA VIDEO -->
 <div id="createSection" class="section active">
 <div class="upload-box">
-<input id="title" placeholder="Titolo">
-<input id="artist" placeholder="Artista">
-<label>Cover</label>
+<input id="title" placeholder="Titolo" type="text">
+<input id="artist" placeholder="Artista" type="text">
+<label>Cover (immagine)</label>
 <input type="file" id="coverFile" accept="image/*">
-<label>Audio</label>
+<label>Audio (MP3, WAV, ecc.)</label>
 <input type="file" id="audioFile" accept="audio/*">
 <button id="createBtn" onclick="createVideo()">Crea Video</button>
 
@@ -82,8 +83,8 @@ footer{text-align:center;padding:20px;color:#777}
 <!-- IMPORT VIDEO -->
 <div id="importSection" class="section">
 <div class="upload-box">
-<input id="importTitle" placeholder="Titolo video">
-<input id="importArtist" placeholder="Artista">
+<input id="importTitle" placeholder="Titolo video" type="text">
+<input id="importArtist" placeholder="Artista" type="text">
 <div class="upload-area" id="uploadArea">🎬 Clicca o trascina video</div>
 <input type="file" id="importFile" accept="video/*" hidden>
 <button id="importBtn" disabled onclick="importVideo()">Aggiungi Video</button>
@@ -93,10 +94,10 @@ footer{text-align:center;padding:20px;color:#777}
 <!-- IMPORT MP3 -->
 <div id="mp3Section" class="section">
 <div class="upload-box">
-<input id="mp3Title" placeholder="Titolo brano">
-<input id="mp3Artist" placeholder="Artista">
+<input id="mp3Title" placeholder="Titolo brano" type="text">
+<input id="mp3Artist" placeholder="Artista" type="text">
 <div class="upload-area" id="mp3UploadArea">🎵 Clicca o trascina MP3</div>
-<input type="file" id="mp3File" accept="audio/mpeg,audio/mp3" hidden>
+<input type="file" id="mp3File" accept="audio/mpeg,audio/mp3,audio/*" hidden>
 <button id="mp3Btn" disabled onclick="importMP3()">Aggiungi MP3</button>
 </div>
 </div>
@@ -104,8 +105,8 @@ footer{text-align:center;padding:20px;color:#777}
 <!-- IMPORT PDF -->
 <div id="pdfSection" class="section">
 <div class="upload-box">
-<input id="pdfTitle" placeholder="Titolo PDF">
-<input id="pdfDescription" placeholder="Descrizione (opzionale)">
+<input id="pdfTitle" placeholder="Titolo PDF" type="text">
+<input id="pdfDescription" placeholder="Descrizione (opzionale)" type="text">
 <div class="upload-area" id="pdfUploadArea">📄 Clicca o trascina PDF</div>
 <input type="file" id="pdfFile" accept="application/pdf" hidden>
 <button id="pdfBtn" disabled onclick="importPDF()">Aggiungi PDF</button>
@@ -221,7 +222,7 @@ if(!confirm("Eliminare?"))return
 const db=await openDB()
 const tx=db.transaction("videos","readwrite")
 tx.objectStore("videos").delete(id)
-tx.oncomplete=loadGallery
+tx.oncomplete=()=>loadGallery()
 }
 
 async function deletePDF(id){
@@ -229,7 +230,7 @@ if(!confirm("Eliminare questo PDF?"))return
 const db=await openDB()
 const tx=db.transaction("pdfs","readwrite")
 tx.objectStore("pdfs").delete(id)
-tx.oncomplete=loadGallery
+tx.oncomplete=()=>loadGallery()
 }
 
 async function deleteMP3(id){
@@ -237,13 +238,13 @@ if(!confirm("Eliminare questo MP3?"))return
 const db=await openDB()
 const tx=db.transaction("mp3s","readwrite")
 tx.objectStore("mp3s").delete(id)
-tx.oncomplete=loadGallery
+tx.oncomplete=()=>loadGallery()
 }
 
 /* ---------------- CREATE VIDEO ---------------- */
 async function createVideo(){
-const title = document.getElementById('title').value
-const artist = document.getElementById('artist').value
+const title = document.getElementById('title').value.trim()
+const artist = document.getElementById('artist').value.trim()
 const coverFile = document.getElementById('coverFile').files[0]
 const audioFileObj = document.getElementById('audioFile').files[0]
 const createBtn = document.getElementById('createBtn')
@@ -418,8 +419,8 @@ importBtn.disabled = false
 async function importVideo(){
 if(!selectedFile) return
 
-const title = document.getElementById('importTitle').value || "Video"
-const artist = document.getElementById('importArtist').value || ""
+const title = document.getElementById('importTitle').value.trim() || "Video"
+const artist = document.getElementById('importArtist').value.trim() || "Sconosciuto"
 
 importBtn.disabled = true
 importBtn.textContent = "Importazione..."
@@ -464,8 +465,8 @@ handleMP3File(e.dataTransfer.files[0])
 }
 
 function handleMP3File(f){
-if(!f || (!f.type.includes("audio/mpeg") && !f.type.includes("audio/mp3") && !f.name.endsWith('.mp3'))) {
-alert("Seleziona un file MP3 valido")
+if(!f || !f.type.startsWith("audio/")) {
+alert("Seleziona un file audio valido (MP3, WAV, ecc.)")
 return
 }
 selectedMP3 = f
@@ -476,15 +477,15 @@ mp3Btn.disabled = false
 async function importMP3(){
 if(!selectedMP3) return
 
-const title = document.getElementById('mp3Title').value || selectedMP3.name.replace('.mp3', '')
-const artist = document.getElementById('mp3Artist').value || "Artista sconosciuto"
+const title = document.getElementById('mp3Title').value.trim() || selectedMP3.name.replace(/\.[^/.]+$/, '')
+const artist = document.getElementById('mp3Artist').value.trim() || "Artista sconosciuto"
 
 mp3Btn.disabled = true
 mp3Btn.textContent = "Importazione..."
 
 try {
 const arrayBuffer = await selectedMP3.arrayBuffer()
-const blob = new Blob([arrayBuffer], {type: 'audio/mpeg'})
+const blob = new Blob([arrayBuffer], {type: selectedMP3.type || 'audio/mpeg'})
 await saveMP3(blob, title, artist)
 loadGallery()
 
@@ -534,8 +535,8 @@ pdfBtn.disabled = false
 async function importPDF(){
 if(!selectedPDF) return
 
-const title = document.getElementById('pdfTitle').value || selectedPDF.name
-const description = document.getElementById('pdfDescription').value || ""
+const title = document.getElementById('pdfTitle').value.trim() || selectedPDF.name
+const description = document.getElementById('pdfDescription').value.trim() || ""
 
 pdfBtn.disabled = true
 pdfBtn.textContent = "Importazione..."
@@ -560,7 +561,7 @@ pdfBtn.textContent = "Aggiungi PDF"
 }
 }
 
-function viewPDF(id, title){
+function viewPDF(id){
 getPDFs().then(pdfs => {
 const pdf = pdfs.find(p => p.id === id)
 if(pdf){
@@ -605,9 +606,9 @@ videoGrid.innerHTML = ""
 pdfGrid.innerHTML = ""
 mp3Grid.innerHTML = ""
 
-const hasVideos = vids.length > 0
-const hasPDFs = pdfs.length > 0
-const hasMP3s = mp3s.length > 0
+const hasVideos = vids && vids.length > 0
+const hasPDFs = pdfs && pdfs.length > 0
+const hasMP3s = mp3s && mp3s.length > 0
 
 if(!hasVideos && !hasPDFs && !hasMP3s){
 gallery.style.display = "none"
@@ -627,9 +628,9 @@ const card = document.createElement('div')
 card.className = 'video-card'
 card.innerHTML = `
 <video src="${url}" controls preload="metadata"></video>
-<div class="video-info"><b>${v.title}</b><br>${v.artist}</div>
+<div class="video-info"><b>${v.title || 'Video'}</b><br>${v.artist || ''}</div>
 <div class="video-actions">
-<a class="download-btn" href="${url}" download="${v.title}.webm">Scarica</a>
+<a class="download-btn" href="${url}" download="${v.title || 'video'}.webm">Scarica</a>
 <button class="delete-btn" onclick="deleteVideo('${v.id}')">Elimina</button>
 </div>`
 videoGrid.appendChild(card)
@@ -648,12 +649,12 @@ card.className = 'video-card pdf-card'
 card.innerHTML = `
 <div class="mp3-icon">🎵</div>
 <div class="video-info">
-<b>${m.title}</b><br>
-<small style="color:#999">${m.artist}</small>
+<b>${m.title || 'Audio'}</b><br>
+<small style="color:#999">${m.artist || 'Artista sconosciuto'}</small>
 </div>
 <div class="video-actions">
 <button class="play-btn" onclick="playMP3('${m.id}')">Ascolta</button>
-<a class="download-btn" href="${url}" download="${m.title}.mp3">Scarica</a>
+<a class="download-btn" href="${url}" download="${m.title || 'audio'}.mp3">Scarica</a>
 <button class="delete-btn" onclick="deleteMP3('${m.id}')">Elimina</button>
 </div>`
 mp3Grid.appendChild(card)
@@ -672,12 +673,12 @@ card.className = 'video-card pdf-card'
 card.innerHTML = `
 <div class="pdf-icon">📄</div>
 <div class="video-info">
-<b>${p.title}</b><br>
+<b>${p.title || 'PDF'}</b><br>
 <small style="color:#999">${p.description || 'Nessuna descrizione'}</small>
 </div>
 <div class="video-actions">
-<button class="view-btn" onclick="viewPDF('${p.id}', '${p.title}')">Visualizza</button>
-<a class="download-btn" href="${url}" download="${p.title}.pdf">Scarica</a>
+<button class="view-btn" onclick="viewPDF('${p.id}')">Visualizza</button>
+<a class="download-btn" href="${url}" download="${p.title || 'documento'}.pdf">Scarica</a>
 <button class="delete-btn" onclick="deletePDF('${p.id}')">Elimina</button>
 </div>`
 pdfGrid.appendChild(card)
@@ -689,6 +690,7 @@ pdfGallery.style.display = "none"
 
 } catch(error) {
 console.error("Errore caricamento galleria:", error)
+alert("Errore nel caricamento: " + error.message)
 }
 }
 
@@ -697,5 +699,4 @@ window.onload = loadGallery
 
 </body>
 </html>
-
 
