@@ -10,14 +10,15 @@
 body{margin:0;background:#111;color:#fff}
 header{padding:30px;text-align:center;background:linear-gradient(135deg,#d6004c,#7b1fa2)}
 .container{max-width:1000px;margin:auto;padding:40px 20px}
-.tabs{display:flex;gap:10px;margin-bottom:30px}
-.tab{flex:1;padding:15px;background:#1e1e1e;border:none;color:#fff;cursor:pointer;border-radius:12px}
+.tabs{display:flex;gap:10px;margin-bottom:30px;flex-wrap:wrap}
+.tab{flex:1;min-width:150px;padding:15px;background:#1e1e1e;border:none;color:#fff;cursor:pointer;border-radius:12px}
 .tab.active{background:linear-gradient(135deg,#d6004c,#7b1fa2)}
 .section{display:none}
 .section.active{display:block}
 .upload-box{background:#1e1e1e;padding:25px;border-radius:12px;margin-bottom:40px}
 input{width:100%;padding:12px;margin-bottom:15px;border-radius:8px;border:none}
 input[type=file]{background:#fff;color:#000}
+label{display:block;margin-top:10px;margin-bottom:5px;color:#aaa}
 button{background:#d6004c;color:#fff;border:none;padding:12px 24px;border-radius:25px;cursor:pointer}
 button:disabled{background:#555;cursor:not-allowed}
 .upload-area{border:3px dashed #d6004c;border-radius:12px;padding:40px;text-align:center;cursor:pointer}
@@ -28,16 +29,17 @@ button:disabled{background:#555;cursor:not-allowed}
 .video-card video{width:100%;height:200px;object-fit:cover}
 .video-info{padding:15px}
 .video-actions{display:flex;gap:10px;padding:0 15px 15px}
-.download-btn{flex:1;background:#d6004c;color:#fff;text-decoration:none;padding:8px;border-radius:8px;text-align:center}
-.delete-btn{flex:1;background:#444;color:#fff;border:none;border-radius:8px;cursor:pointer}
-.view-btn{flex:1;background:#7b1fa2;color:#fff;border:none;border-radius:8px;cursor:pointer}
+.download-btn{flex:1;background:#d6004c;color:#fff;text-decoration:none;padding:8px;border-radius:8px;text-align:center;display:flex;align-items:center;justify-content:center}
+.delete-btn{flex:1;background:#444;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:8px}
+.view-btn{flex:1;background:#7b1fa2;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:8px}
+.play-btn{flex:1;background:#4caf50;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:8px}
 .empty{text-align:center;color:#777;padding:60px}
 .progress{display:none;margin-top:15px}
 .progress-bar{height:25px;background:#333;border-radius:15px;overflow:hidden}
 .progress-fill{height:100%;width:0;background:linear-gradient(90deg,#d6004c,#7b1fa2);text-align:center;line-height:25px;transition:width 0.3s}
 .status{margin-top:10px;color:#aaa;font-size:14px}
 .pdf-card{background:#1e1e1e;border-radius:12px;overflow:hidden;padding:20px}
-.pdf-icon{font-size:80px;text-align:center;margin-bottom:15px}
+.pdf-icon,.mp3-icon{font-size:80px;text-align:center;margin-bottom:15px}
 footer{text-align:center;padding:20px;color:#777}
 </style>
 </head>
@@ -46,7 +48,7 @@ footer{text-align:center;padding:20px;color:#777}
 
 <header>
 <h1>🎶 My Music Studio</h1>
-<p>Crea e gestisci video e PDF localmente</p>
+<p>Crea e gestisci video, audio e PDF localmente</p>
 </header>
 
 <div class="container">
@@ -54,17 +56,18 @@ footer{text-align:center;padding:20px;color:#777}
 <div class="tabs">
 <button class="tab active" onclick="switchTab('create')">🎬 Crea Video</button>
 <button class="tab" onclick="switchTab('import')">📤 Importa Video</button>
+<button class="tab" onclick="switchTab('mp3')">🎵 Importa MP3</button>
 <button class="tab" onclick="switchTab('pdf')">📄 Importa PDF</button>
 </div>
 
 <!-- CREA VIDEO -->
 <div id="createSection" class="section active">
 <div class="upload-box">
-<input id="title" placeholder="Titolo">
-<input id="artist" placeholder="Artista">
-<label>Cover</label>
+<input id="title" placeholder="Titolo" type="text">
+<input id="artist" placeholder="Artista" type="text">
+<label>Cover (immagine)</label>
 <input type="file" id="coverFile" accept="image/*">
-<label>Audio</label>
+<label>Audio (MP3, WAV, ecc.)</label>
 <input type="file" id="audioFile" accept="audio/*">
 <button id="createBtn" onclick="createVideo()">Crea Video</button>
 
@@ -80,19 +83,30 @@ footer{text-align:center;padding:20px;color:#777}
 <!-- IMPORT VIDEO -->
 <div id="importSection" class="section">
 <div class="upload-box">
-<input id="importTitle" placeholder="Titolo video">
-<input id="importArtist" placeholder="Artista">
+<input id="importTitle" placeholder="Titolo video" type="text">
+<input id="importArtist" placeholder="Artista" type="text">
 <div class="upload-area" id="uploadArea">🎬 Clicca o trascina video</div>
 <input type="file" id="importFile" accept="video/*" hidden>
 <button id="importBtn" disabled onclick="importVideo()">Aggiungi Video</button>
 </div>
 </div>
 
+<!-- IMPORT MP3 -->
+<div id="mp3Section" class="section">
+<div class="upload-box">
+<input id="mp3Title" placeholder="Titolo brano" type="text">
+<input id="mp3Artist" placeholder="Artista" type="text">
+<div class="upload-area" id="mp3UploadArea">🎵 Clicca o trascina MP3</div>
+<input type="file" id="mp3File" accept="audio/mpeg,audio/mp3,audio/*" hidden>
+<button id="mp3Btn" disabled onclick="importMP3()">Aggiungi MP3</button>
+</div>
+</div>
+
 <!-- IMPORT PDF -->
 <div id="pdfSection" class="section">
 <div class="upload-box">
-<input id="pdfTitle" placeholder="Titolo PDF">
-<input id="pdfDescription" placeholder="Descrizione (opzionale)">
+<input id="pdfTitle" placeholder="Titolo PDF" type="text">
+<input id="pdfDescription" placeholder="Descrizione (opzionale)" type="text">
 <div class="upload-area" id="pdfUploadArea">📄 Clicca o trascina PDF</div>
 <input type="file" id="pdfFile" accept="application/pdf" hidden>
 <button id="pdfBtn" disabled onclick="importPDF()">Aggiungi PDF</button>
@@ -103,6 +117,12 @@ footer{text-align:center;padding:20px;color:#777}
 <div class="gallery" id="gallery" style="display:none">
 <h2>🎞️ Video</h2>
 <div id="videoGrid" class="video-grid"></div>
+</div>
+
+<!-- GALLERIA MP3 -->
+<div class="gallery" id="mp3Gallery" style="display:none">
+<h2>🎵 Brani Audio</h2>
+<div id="mp3Grid" class="video-grid"></div>
 </div>
 
 <!-- GALLERIA PDF -->
@@ -118,6 +138,204 @@ footer{text-align:center;padding:20px;color:#777}
 <footer>© 2025 – My Music Studio</footer>
 
 <script>
+let dbInstance = null;
+
+/* ---------------- IndexedDB ---------------- */
+function openDB(){
+if(dbInstance && !dbInstance.objectStoreNames.contains("mp3s")){
+// Se il database non ha mp3s, lo chiudiamo e ricreaiamo
+dbInstance.close()
+dbInstance = null
+}
+return new Promise((res,rej)=>{
+if(dbInstance){
+res(dbInstance)
+return
+}
+const r=indexedDB.open("VideoDB",4)
+r.onupgradeneeded=e=>{
+const db = e.target.result
+// Crea gli store se non esistono
+if(!db.objectStoreNames.contains("videos")){
+db.createObjectStore("videos",{keyPath:"id"})
+}
+if(!db.objectStoreNames.contains("pdfs")){
+db.createObjectStore("pdfs",{keyPath:"id"})
+}
+if(!db.objectStoreNames.contains("mp3s")){
+db.createObjectStore("mp3s",{keyPath:"id"})
+}
+}
+r.onsuccess=e=>{
+dbInstance = e.target.result
+res(dbInstance)
+}
+r.onerror=e=>rej(e.target.error)
+})
+}
+
+async function saveVideo(blob,title,artist){
+const db = await openDB()
+return new Promise((resolve, reject)=>{
+try{
+const tx=db.transaction("videos","readwrite")
+const store = tx.objectStore("videos")
+store.put({id:Date.now().toString(),blob,title,artist,date:Date.now(),type:'video'})
+tx.oncomplete=()=>resolve()
+tx.onerror=()=>reject(tx.error)
+}catch(e){
+reject(e)
+}
+})
+}
+
+async function savePDF(blob,title,description){
+const db = await openDB()
+return new Promise((resolve, reject)=>{
+try{
+const tx=db.transaction("pdfs","readwrite")
+const store = tx.objectStore("pdfs")
+store.put({id:Date.now().toString(),blob,title,description,date:Date.now(),type:'pdf'})
+tx.oncomplete=()=>resolve()
+tx.onerror=()=>reject(tx.error)
+}catch(e){
+reject(e)
+}
+})
+}
+
+async function saveMP3(blob,title,artist){
+try{
+const db = await openDB()
+// Verifica che l'object store esista
+if(!db.objectStoreNames.contains("mp3s")){
+throw new Error("Object store mp3s non trovato")
+}
+return new Promise((resolve, reject)=>{
+try{
+const tx=db.transaction("mp3s","readwrite")
+const store = tx.objectStore("mp3s")
+store.put({id:Date.now().toString(),blob,title,artist,date:Date.now(),type:'mp3'})
+tx.oncomplete=()=>resolve()
+tx.onerror=()=>reject(tx.error)
+}catch(e){
+reject(e)
+}
+})
+}catch(e){
+console.error("Errore saveMP3:", e)
+throw e
+}
+}
+
+async function getVideos(){
+const db = await openDB()
+return new Promise((resolve, reject)=>{
+try{
+if(!db.objectStoreNames.contains("videos")){
+resolve([])
+return
+}
+const tx=db.transaction("videos","readonly")
+const req = tx.objectStore("videos").getAll()
+req.onsuccess=e=>resolve(e.target.result || [])
+req.onerror=()=>reject(req.error)
+}catch(e){
+resolve([])
+}
+})
+}
+
+async function getPDFs(){
+const db = await openDB()
+return new Promise((resolve, reject)=>{
+try{
+if(!db.objectStoreNames.contains("pdfs")){
+resolve([])
+return
+}
+const tx=db.transaction("pdfs","readonly")
+const req = tx.objectStore("pdfs").getAll()
+req.onsuccess=e=>resolve(e.target.result || [])
+req.onerror=()=>reject(req.error)
+}catch(e){
+resolve([])
+}
+})
+}
+
+async function getMP3s(){
+const db = await openDB()
+return new Promise((resolve, reject)=>{
+try{
+if(!db.objectStoreNames.contains("mp3s")){
+resolve([])
+return
+}
+const tx=db.transaction("mp3s","readonly")
+const req = tx.objectStore("mp3s").getAll()
+req.onsuccess=e=>resolve(e.target.result || [])
+req.onerror=()=>reject(req.error)
+}catch(e){
+resolve([])
+}
+})
+}
+
+async function deleteVideo(id){
+if(!confirm("Eliminare?"))return
+const db = await openDB()
+return new Promise((resolve)=>{
+try{
+const tx=db.transaction("videos","readwrite")
+tx.objectStore("videos").delete(id)
+tx.oncomplete=()=>{
+loadGallery()
+resolve()
+}
+}catch(e){
+console.error(e)
+resolve()
+}
+})
+}
+
+async function deletePDF(id){
+if(!confirm("Eliminare questo PDF?"))return
+const db = await openDB()
+return new Promise((resolve)=>{
+try{
+const tx=db.transaction("pdfs","readwrite")
+tx.objectStore("pdfs").delete(id)
+tx.oncomplete=()=>{
+loadGallery()
+resolve()
+}
+}catch(e){
+console.error(e)
+resolve()
+}
+})
+}
+
+async function deleteMP3(id){
+if(!confirm("Eliminare questo MP3?"))return
+const db = await openDB()
+return new Promise((resolve)=>{
+try{
+const tx=db.transaction("mp3s","readwrite")
+tx.objectStore("mp3s").delete(id)
+tx.oncomplete=()=>{
+loadGallery()
+resolve()
+}
+}catch(e){
+console.error(e)
+resolve()
+}
+})
+}
+
 /* ---------------- UI ---------------- */
 function switchTab(t){
 document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'))
@@ -128,76 +346,19 @@ document.getElementById('createSection').classList.add('active')
 }else if(t==='import'){
 document.querySelectorAll('.tab')[1].classList.add('active')
 document.getElementById('importSection').classList.add('active')
-}else{
+}else if(t==='mp3'){
 document.querySelectorAll('.tab')[2].classList.add('active')
+document.getElementById('mp3Section').classList.add('active')
+}else{
+document.querySelectorAll('.tab')[3].classList.add('active')
 document.getElementById('pdfSection').classList.add('active')
 }
 }
 
-/* ---------------- IndexedDB ---------------- */
-function openDB(){
-return new Promise((res,rej)=>{
-const r=indexedDB.open("VideoDB",2)
-r.onupgradeneeded=e=>{
-const db = e.target.result
-if(!db.objectStoreNames.contains("videos")){
-db.createObjectStore("videos",{keyPath:"id"})
-}
-if(!db.objectStoreNames.contains("pdfs")){
-db.createObjectStore("pdfs",{keyPath:"id"})
-}
-}
-r.onsuccess=e=>res(e.target.result)
-r.onerror=e=>rej(e.target.error)
-})
-}
-
-async function saveVideo(blob,title,artist){
-const db=await openDB()
-const tx=db.transaction("videos","readwrite")
-tx.objectStore("videos").put({id:Date.now().toString(),blob,title,artist,date:Date.now(),type:'video'})
-return new Promise(r=>tx.oncomplete=r)
-}
-
-async function savePDF(blob,title,description){
-const db=await openDB()
-const tx=db.transaction("pdfs","readwrite")
-tx.objectStore("pdfs").put({id:Date.now().toString(),blob,title,description,date:Date.now(),type:'pdf'})
-return new Promise(r=>tx.oncomplete=r)
-}
-
-async function getVideos(){
-const db=await openDB()
-const tx=db.transaction("videos","readonly")
-return new Promise(r=>tx.objectStore("videos").getAll().onsuccess=e=>r(e.target.result))
-}
-
-async function getPDFs(){
-const db=await openDB()
-const tx=db.transaction("pdfs","readonly")
-return new Promise(r=>tx.objectStore("pdfs").getAll().onsuccess=e=>r(e.target.result))
-}
-
-async function deleteVideo(id){
-if(!confirm("Eliminare?"))return
-const db=await openDB()
-const tx=db.transaction("videos","readwrite")
-tx.objectStore("videos").delete(id)
-tx.oncomplete=loadGallery
-}
-
-async function deletePDF(id){
-if(!confirm("Eliminare questo PDF?"))return
-const db=await openDB()
-const tx=db.transaction("pdfs","readwrite")
-tx.objectStore("pdfs").delete(id)
-tx.oncomplete=loadGallery
-}
-
 /* ---------------- CREATE VIDEO ---------------- */
 async function createVideo(){
-const title = document.getElementById('title').value
-const artist = document.getElementById('artist').value
+const title = document.getElementById('title').value.trim()
+const artist = document.getElementById('artist').value.trim()
 const coverFile = document.getElementById('coverFile').files[0]
 const audioFileObj = document.getElementById('audioFile').files[0]
 const createBtn = document.getElementById('createBtn')
@@ -372,8 +533,8 @@ importBtn.disabled = false
 async function importVideo(){
 if(!selectedFile) return
 
-const title = document.getElementById('importTitle').value || "Video"
-const artist = document.getElementById('importArtist').value || ""
+const title = document.getElementById('importTitle').value.trim() || "Video"
+const artist = document.getElementById('importArtist').value.trim() || "Sconosciuto"
 
 importBtn.disabled = true
 importBtn.textContent = "Importazione..."
@@ -395,6 +556,64 @@ console.error("Errore importazione:", error)
 alert("Errore nell'importazione: " + error.message)
 importBtn.disabled = false
 importBtn.textContent = "Aggiungi Video"
+}
+}
+
+/* ---------------- IMPORT MP3 ---------------- */
+let selectedMP3 = null
+const mp3UploadArea = document.getElementById('mp3UploadArea')
+const mp3FileInput = document.getElementById('mp3File')
+const mp3Btn = document.getElementById('mp3Btn')
+
+mp3UploadArea.onclick = () => mp3FileInput.click()
+mp3FileInput.onchange = e => handleMP3File(e.target.files[0])
+mp3UploadArea.ondragover = e => {
+e.preventDefault()
+mp3UploadArea.classList.add("dragover")
+}
+mp3UploadArea.ondragleave = () => mp3UploadArea.classList.remove("dragover")
+mp3UploadArea.ondrop = e => {
+e.preventDefault()
+mp3UploadArea.classList.remove("dragover")
+handleMP3File(e.dataTransfer.files[0])
+}
+
+function handleMP3File(f){
+if(!f || !f.type.startsWith("audio/")) {
+alert("Seleziona un file audio valido (MP3, WAV, ecc.)")
+return
+}
+selectedMP3 = f
+mp3UploadArea.innerHTML = "✅ " + f.name
+mp3Btn.disabled = false
+}
+
+async function importMP3(){
+if(!selectedMP3) return
+
+const title = document.getElementById('mp3Title').value.trim() || selectedMP3.name.replace(/\.[^/.]+$/, '')
+const artist = document.getElementById('mp3Artist').value.trim() || "Artista sconosciuto"
+
+mp3Btn.disabled = true
+mp3Btn.textContent = "Importazione..."
+
+try {
+const arrayBuffer = await selectedMP3.arrayBuffer()
+const blob = new Blob([arrayBuffer], {type: selectedMP3.type || 'audio/mpeg'})
+await saveMP3(blob, title, artist)
+loadGallery()
+
+document.getElementById('mp3Title').value = ""
+document.getElementById('mp3Artist').value = ""
+mp3UploadArea.innerHTML = "🎵 Clicca o trascina MP3"
+selectedMP3 = null
+mp3Btn.textContent = "Aggiungi MP3"
+mp3Btn.disabled = true
+} catch(error) {
+console.error("Errore importazione MP3:", error)
+alert("Errore nell'importazione MP3: " + error.message)
+mp3Btn.disabled = false
+mp3Btn.textContent = "Aggiungi MP3"
 }
 }
 
@@ -430,8 +649,8 @@ pdfBtn.disabled = false
 async function importPDF(){
 if(!selectedPDF) return
 
-const title = document.getElementById('pdfTitle').value || selectedPDF.name
-const description = document.getElementById('pdfDescription').value || ""
+const title = document.getElementById('pdfTitle').value.trim() || selectedPDF.name
+const description = document.getElementById('pdfDescription').value.trim() || ""
 
 pdfBtn.disabled = true
 pdfBtn.textContent = "Importazione..."
@@ -456,7 +675,7 @@ pdfBtn.textContent = "Aggiungi PDF"
 }
 }
 
-function viewPDF(id, title){
+function viewPDF(id){
 getPDFs().then(pdfs => {
 const pdf = pdfs.find(p => p.id === id)
 if(pdf){
@@ -466,26 +685,49 @@ window.open(url, '_blank')
 })
 }
 
+let currentAudio = null
+
+function playMP3(id){
+getMP3s().then(mp3s => {
+const mp3 = mp3s.find(m => m.id === id)
+if(mp3){
+if(currentAudio){
+currentAudio.pause()
+currentAudio = null
+}
+const url = URL.createObjectURL(mp3.blob)
+currentAudio = new Audio(url)
+currentAudio.play()
+}
+})
+}
+
 /* ---------------- GALLERY ---------------- */
 async function loadGallery(){
 try {
 const vids = await getVideos()
 const pdfs = await getPDFs()
+const mp3s = await getMP3s()
 const videoGrid = document.getElementById('videoGrid')
 const pdfGrid = document.getElementById('pdfGrid')
+const mp3Grid = document.getElementById('mp3Grid')
 const gallery = document.getElementById('gallery')
 const pdfGallery = document.getElementById('pdfGallery')
+const mp3Gallery = document.getElementById('mp3Gallery')
 const empty = document.getElementById('empty')
 
 videoGrid.innerHTML = ""
 pdfGrid.innerHTML = ""
+mp3Grid.innerHTML = ""
 
-const hasVideos = vids.length > 0
-const hasPDFs = pdfs.length > 0
+const hasVideos = vids && vids.length > 0
+const hasPDFs = pdfs && pdfs.length > 0
+const hasMP3s = mp3s && mp3s.length > 0
 
-if(!hasVideos && !hasPDFs){
+if(!hasVideos && !hasPDFs && !hasMP3s){
 gallery.style.display = "none"
 pdfGallery.style.display = "none"
+mp3Gallery.style.display = "none"
 empty.style.display = "block"
 return
 }
@@ -500,9 +742,9 @@ const card = document.createElement('div')
 card.className = 'video-card'
 card.innerHTML = `
 <video src="${url}" controls preload="metadata"></video>
-<div class="video-info"><b>${v.title}</b><br>${v.artist}</div>
+<div class="video-info"><b>${v.title || 'Video'}</b><br>${v.artist || ''}</div>
 <div class="video-actions">
-<a class="download-btn" href="${url}" download="${v.title}.webm">Scarica</a>
+<a class="download-btn" href="${url}" download="${v.title || 'video'}.webm">Scarica</a>
 <button class="delete-btn" onclick="deleteVideo('${v.id}')">Elimina</button>
 </div>`
 videoGrid.appendChild(card)
@@ -510,6 +752,30 @@ videoGrid.appendChild(card)
 gallery.style.display = "block"
 }else{
 gallery.style.display = "none"
+}
+
+// Load MP3s
+if(hasMP3s){
+mp3s.sort((a,b) => b.date - a.date).forEach(m => {
+const url = URL.createObjectURL(m.blob)
+const card = document.createElement('div')
+card.className = 'video-card pdf-card'
+card.innerHTML = `
+<div class="mp3-icon">🎵</div>
+<div class="video-info">
+<b>${m.title || 'Audio'}</b><br>
+<small style="color:#999">${m.artist || 'Artista sconosciuto'}</small>
+</div>
+<div class="video-actions">
+<button class="play-btn" onclick="playMP3('${m.id}')">Ascolta</button>
+<a class="download-btn" href="${url}" download="${m.title || 'audio'}.mp3">Scarica</a>
+<button class="delete-btn" onclick="deleteMP3('${m.id}')">Elimina</button>
+</div>`
+mp3Grid.appendChild(card)
+})
+mp3Gallery.style.display = "block"
+}else{
+mp3Gallery.style.display = "none"
 }
 
 // Load PDFs
@@ -521,12 +787,12 @@ card.className = 'video-card pdf-card'
 card.innerHTML = `
 <div class="pdf-icon">📄</div>
 <div class="video-info">
-<b>${p.title}</b><br>
+<b>${p.title || 'PDF'}</b><br>
 <small style="color:#999">${p.description || 'Nessuna descrizione'}</small>
 </div>
 <div class="video-actions">
-<button class="view-btn" onclick="viewPDF('${p.id}', '${p.title}')">Visualizza</button>
-<a class="download-btn" href="${url}" download="${p.title}.pdf">Scarica</a>
+<button class="view-btn" onclick="viewPDF('${p.id}')">Visualizza</button>
+<a class="download-btn" href="${url}" download="${p.title || 'documento'}.pdf">Scarica</a>
 <button class="delete-btn" onclick="deletePDF('${p.id}')">Elimina</button>
 </div>`
 pdfGrid.appendChild(card)
@@ -541,7 +807,13 @@ console.error("Errore caricamento galleria:", error)
 }
 }
 
-window.onload = loadGallery
+window.onload = ()=>{
+openDB().then(()=>{
+loadGallery()
+}).catch(err=>{
+console.error("Errore apertura DB:", err)
+})
+}
 </script>
 
 </body>
