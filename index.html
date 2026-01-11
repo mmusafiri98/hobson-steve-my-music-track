@@ -20,15 +20,16 @@ input{width:100%;padding:12px;margin-bottom:15px;border-radius:8px;border:none}
 input[type=file]{background:#fff;color:#000}
 label{color:#aaa}
 button{background:#d6004c;color:#fff;border:none;padding:12px 24px;border-radius:25px;cursor:pointer}
+button:disabled{background:#555}
 .video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px}
 .video-card{background:#1e1e1e;border-radius:12px;overflow:hidden}
 .video-card video{width:100%;height:200px;object-fit:cover}
 .video-info{padding:15px}
 .video-actions{display:flex;gap:8px;padding:0 15px 15px}
 .download-btn,.delete-btn,.edit-btn,.play-btn,.view-btn{
-flex:1;padding:8px;border-radius:8px;border:none;cursor:pointer;color:#fff
+flex:1;padding:8px;border-radius:8px;border:none;cursor:pointer;color:#fff;text-align:center
 }
-.download-btn{background:#d6004c;text-decoration:none;text-align:center}
+.download-btn{background:#d6004c;text-decoration:none}
 .delete-btn{background:#444}
 .edit-btn{background:#7b1fa2}
 .play-btn{background:#4caf50}
@@ -37,8 +38,13 @@ flex:1;padding:8px;border-radius:8px;border:none;cursor:pointer;color:#fff
 .empty{text-align:center;color:#777;padding:60px}
 
 /* MODAL */
-.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center}
-.modal-content{background:#1e1e1e;padding:25px;border-radius:12px;width:90%;max-width:400px}
+.modal{
+position:fixed;inset:0;background:rgba(0,0,0,.7);
+display:none;align-items:center;justify-content:center
+}
+.modal-content{
+background:#1e1e1e;padding:25px;border-radius:12px;width:90%;max-width:400px
+}
 </style>
 </head>
 
@@ -46,7 +52,7 @@ flex:1;padding:8px;border-radius:8px;border:none;cursor:pointer;color:#fff
 
 <header>
 <h1>🎶 My Music Studio</h1>
-<p>Gestione multimediale locale (IndexedDB)</p>
+<p>Gestion locale vidéo / audio / PDF (IndexedDB)</p>
 </header>
 
 <div class="container">
@@ -123,8 +129,8 @@ flex:1;padding:8px;border-radius:8px;border:none;cursor:pointer;color:#fff
 <div class="modal" id="editModal">
 <div class="modal-content">
 <h3>✏️ Modifica Video</h3>
-<input id="editTitle">
-<input id="editArtist">
+<input id="editTitle" placeholder="Titolo">
+<input id="editArtist" placeholder="Artista">
 <label>Nuova cover</label>
 <input type="file" id="editCover" accept="image/*">
 <button onclick="saveEdit()">Salva</button>
@@ -135,21 +141,22 @@ flex:1;padding:8px;border-radius:8px;border:none;cursor:pointer;color:#fff
 <script>
 let db,currentEditId=null,currentAudio=null
 
+/* DB */
 function openDB(){
 return new Promise(res=>{
-const r=indexedDB.open("VideoDB",6)
+const r=indexedDB.open("VideoDB",7)
 r.onupgradeneeded=e=>{
-const db=e.target.result
-if(!db.objectStoreNames.contains("videos"))db.createObjectStore("videos",{keyPath:"id"})
-if(!db.objectStoreNames.contains("mp3s"))db.createObjectStore("mp3s",{keyPath:"id"})
-if(!db.objectStoreNames.contains("pdfs"))db.createObjectStore("pdfs",{keyPath:"id"})
+const d=e.target.result
+if(!d.objectStoreNames.contains("videos"))d.createObjectStore("videos",{keyPath:"id"})
+if(!d.objectStoreNames.contains("mp3s"))d.createObjectStore("mp3s",{keyPath:"id"})
+if(!d.objectStoreNames.contains("pdfs"))d.createObjectStore("pdfs",{keyPath:"id"})
 }
 r.onsuccess=e=>{db=e.target.result;res()}
 })
 }
+const store=(n,m)=>db.transaction(n,m).objectStore(n)
 
-function tx(store,mode){return db.transaction(store,mode).objectStore(store)}
-
+/* UI */
 function switchTab(t){
 document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'))
 document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'))
@@ -159,46 +166,49 @@ event.target.classList.add('active')
 
 /* CREATE VIDEO */
 async function createVideo(){
-const title=title.value,artist=artist.value
-const cover=coverFile.files[0],audio=audioFile.files[0]
-if(!title||!artist||!cover||!audio)return alert("Completa tutto")
+const t=title.value,a=artist.value
+const c=coverFile.files[0],au=audioFile.files[0]
+if(!t||!a||!c||!au)return alert("Completa tutti i campi")
 
 const canvas=document.createElement("canvas")
 canvas.width=1280;canvas.height=720
 const ctx=canvas.getContext("2d")
-const img=new Image();img.src=URL.createObjectURL(cover)
+const img=new Image()
+img.src=URL.createObjectURL(c)
 await img.decode()
 ctx.drawImage(img,0,0,canvas.width,canvas.height)
 
 const stream=canvas.captureStream(30)
-const audioCtx=new AudioContext()
-const src=audioCtx.createMediaElementSource(new Audio(URL.createObjectURL(audio)))
-const dest=audioCtx.createMediaStreamDestination()
-src.connect(dest);src.connect(audioCtx.destination)
+const audio=new Audio(URL.createObjectURL(au))
+const ac=new AudioContext()
+const src=ac.createMediaElementSource(audio)
+const dest=ac.createMediaStreamDestination()
+src.connect(dest);src.connect(ac.destination)
 stream.addTrack(dest.stream.getAudioTracks()[0])
 
-const rec=new MediaRecorder(stream)
+const rec=new MediaRecorder(stream,{mimeType:"video/webm"})
 let chunks=[]
 rec.ondataavailable=e=>chunks.push(e.data)
 rec.onstop=async()=>{
-tx("videos","readwrite").put({
+store("videos","readwrite").put({
 id:Date.now().toString(),
 blob:new Blob(chunks,{type:"video/webm"}),
-title,artist,
-coverBlob:await cover.arrayBuffer(),
-coverType:cover.type,
+title:t,artist:a,
+coverBlob:await c.arrayBuffer(),
+coverType:c.type,
 date:Date.now()
 })
 loadGallery()
 }
 rec.start()
-setTimeout(()=>rec.stop(),audio.duration*1000)
+audio.play()
+audio.onended=()=>rec.stop()
 }
 
 /* IMPORT VIDEO */
-async function importVideo(){
+function importVideo(){
 const f=importFile.files[0]; if(!f)return
-tx("videos","readwrite").put({
+store("videos","readwrite").put({
 id:Date.now().toString(),
 blob:f,
 title:importTitle.value||"Video",
@@ -211,15 +221,15 @@ loadGallery()
 /* MP3 */
 function importMP3(){
 const f=mp3File.files[0]; if(!f)return
-tx("mp3s","readwrite").put({
+store("mp3s","readwrite").put({
 id:Date.now().toString(),
-blob:f,title:mp3Title.value||f.name,artist:mp3Artist.value,date:Date.now()
+blob:f,title:mp3Title.value||f.name,
+artist:mp3Artist.value||"",date:Date.now()
 })
 loadGallery()
 }
-
 function playMP3(id){
-tx("mp3s","readonly").get(id).onsuccess=e=>{
+store("mp3s","readonly").get(id).onsuccess=e=>{
 if(currentAudio)currentAudio.pause()
 currentAudio=new Audio(URL.createObjectURL(e.target.result.blob))
 currentAudio.play()
@@ -229,22 +239,24 @@ currentAudio.play()
 /* PDF */
 function importPDF(){
 const f=pdfFile.files[0]; if(!f)return
-tx("pdfs","readwrite").put({id:Date.now().toString(),blob:f,title:pdfTitle.value||f.name,date:Date.now()})
+store("pdfs","readwrite").put({
+id:Date.now().toString(),
+blob:f,title:pdfTitle.value||f.name,date:Date.now()
+})
 loadGallery()
 }
 
-/* EDIT VIDEO */
+/* EDIT */
 function openEdit(v){
 currentEditId=v.id
 editTitle.value=v.title||""
 editArtist.value=v.artist||""
 editModal.style.display="flex"
 }
-
 function closeEdit(){editModal.style.display="none"}
 
 async function saveEdit(){
-tx("videos","readonly").get(currentEditId).onsuccess=async e=>{
+store("videos","readonly").get(currentEditId).onsuccess=async e=>{
 const v=e.target.result
 v.title=editTitle.value
 v.artist=editArtist.value
@@ -252,7 +264,7 @@ if(editCover.files[0]){
 v.coverBlob=await editCover.files[0].arrayBuffer()
 v.coverType=editCover.files[0].type
 }
-tx("videos","readwrite").put(v)
+store("videos","readwrite").put(v)
 closeEdit();loadGallery()
 }
 }
@@ -260,21 +272,29 @@ closeEdit();loadGallery()
 /* GALLERY */
 function loadGallery(){
 videoGrid.innerHTML=mp3Grid.innerHTML=pdfGrid.innerHTML=""
-tx("videos","readonly").getAll().onsuccess=e=>{
+
+store("videos","readonly").getAll().onsuccess=e=>{
 e.target.result.forEach(v=>{
-const poster=v.coverBlob?URL.createObjectURL(new Blob([v.coverBlob],{type:v.coverType})):""
+const videoURL=URL.createObjectURL(v.blob)
+const poster=v.coverBlob
+?URL.createObjectURL(new Blob([v.coverBlob],{type:v.coverType})):""
+
+const name=(v.title||"video").replace(/[^\w]+/g,"_").toLowerCase()
+
 videoGrid.innerHTML+=`
 <div class="video-card">
-<video src="${URL.createObjectURL(v.blob)}" ${poster?`poster="${poster}"`:""} controls></video>
+<video src="${videoURL}" ${poster?`poster="${poster}"`:""} controls></video>
 <div class="video-info"><b>${v.title}</b><br>${v.artist}</div>
 <div class="video-actions">
+<a class="download-btn" href="${videoURL}" download="${name}.webm">⬇️ Télécharger</a>
 <button class="edit-btn" onclick='openEdit(${JSON.stringify(v)})'>✏️</button>
-<button class="delete-btn" onclick='tx("videos","readwrite").delete("${v.id}");loadGallery()'>🗑️</button>
+<button class="delete-btn" onclick='store("videos","readwrite").delete("${v.id}");loadGallery()'>🗑️</button>
 </div>
 </div>`
 })
 }
-tx("mp3s","readonly").getAll().onsuccess=e=>{
+
+store("mp3s","readonly").getAll().onsuccess=e=>{
 e.target.result.forEach(m=>{
 mp3Grid.innerHTML+=`
 <div class="video-card">
@@ -284,7 +304,8 @@ mp3Grid.innerHTML+=`
 </div></div>`
 })
 }
-tx("pdfs","readonly").getAll().onsuccess=e=>{
+
+store("pdfs","readonly").getAll().onsuccess=e=>{
 e.target.result.forEach(p=>{
 pdfGrid.innerHTML+=`
 <div class="video-card">
