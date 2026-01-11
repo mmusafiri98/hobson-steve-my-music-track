@@ -33,7 +33,6 @@ button:disabled{background:#555;cursor:not-allowed}
 .delete-btn{flex:1;background:#444;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:8px}
 .view-btn{flex:1;background:#7b1fa2;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:8px}
 .play-btn{flex:1;background:#4caf50;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:8px}
-.edit-btn{flex:1;background:#ff9800;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:8px}
 .empty{text-align:center;color:#777;padding:60px}
 .progress{display:none;margin-top:15px}
 .progress-bar{height:25px;background:#333;border-radius:15px;overflow:hidden}
@@ -42,13 +41,6 @@ button:disabled{background:#555;cursor:not-allowed}
 .pdf-card{background:#1e1e1e;border-radius:12px;overflow:hidden;padding:20px}
 .pdf-icon,.mp3-icon{font-size:80px;text-align:center;margin-bottom:15px}
 footer{text-align:center;padding:20px;color:#777}
-.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:1000;justify-content:center;align-items:center}
-.modal.active{display:flex}
-.modal-content{background:#1e1e1e;padding:30px;border-radius:12px;max-width:500px;width:90%}
-.modal-content h2{margin-top:0;color:#d6004c}
-.modal-actions{display:flex;gap:10px;margin-top:20px}
-.modal-actions button{flex:1}
-.close-modal{background:#666}
 </style>
 </head>
 
@@ -143,36 +135,15 @@ footer{text-align:center;padding:20px;color:#777}
 
 </div>
 
-<!-- MODAL MODIFICA VIDEO -->
-<div class="modal" id="editModal">
-<div class="modal-content">
-<h2>✏️ Modifica Video</h2>
-<input id="editTitle" placeholder="Nuovo titolo" type="text">
-<input id="editArtist" placeholder="Nuovo artista" type="text">
-<label>Nuova Cover (opzionale)</label>
-<input type="file" id="editCoverFile" accept="image/*">
-<div class="progress" id="editProgressBox">
-<div class="progress-bar">
-<div class="progress-fill" id="editProgressFill">0%</div>
-</div>
-<div class="status" id="editStatus"></div>
-</div>
-<div class="modal-actions">
-<button class="close-modal" onclick="closeEditModal()">Annulla</button>
-<button id="saveEditBtn" onclick="saveVideoEdit()">Salva Modifiche</button>
-</div>
-</div>
-</div>
-
 <footer>© 2025 – My Music Studio</footer>
 
 <script>
 let dbInstance = null;
-let currentEditingVideo = null;
 
 /* ---------------- IndexedDB ---------------- */
 function openDB(){
 if(dbInstance && !dbInstance.objectStoreNames.contains("mp3s")){
+// Se il database non ha mp3s, lo chiudiamo e ricreaiamo
 dbInstance.close()
 dbInstance = null
 }
@@ -184,6 +155,7 @@ return
 const r=indexedDB.open("VideoDB",4)
 r.onupgradeneeded=e=>{
 const db = e.target.result
+// Crea gli store se non esistono
 if(!db.objectStoreNames.contains("videos")){
 db.createObjectStore("videos",{keyPath:"id"})
 }
@@ -217,32 +189,6 @@ reject(e)
 })
 }
 
-async function updateVideo(id, blob, title, artist){
-const db = await openDB()
-return new Promise((resolve, reject)=>{
-try{
-const tx=db.transaction("videos","readwrite")
-const store = tx.objectStore("videos")
-const req = store.get(id)
-req.onsuccess=()=>{
-const video = req.result
-if(video){
-video.blob = blob
-video.title = title
-video.artist = artist
-store.put(video)
-tx.oncomplete=()=>resolve()
-}else{
-reject(new Error("Video non trovato"))
-}
-}
-tx.onerror=()=>reject(tx.error)
-}catch(e){
-reject(e)
-}
-})
-}
-
 async function savePDF(blob,title,description){
 const db = await openDB()
 return new Promise((resolve, reject)=>{
@@ -261,6 +207,7 @@ reject(e)
 async function saveMP3(blob,title,artist){
 try{
 const db = await openDB()
+// Verifica che l'object store esista
 if(!db.objectStoreNames.contains("mp3s")){
 throw new Error("Object store mp3s non trovato")
 }
@@ -295,24 +242,6 @@ req.onsuccess=e=>resolve(e.target.result || [])
 req.onerror=()=>reject(req.error)
 }catch(e){
 resolve([])
-}
-})
-}
-
-async function getVideoById(id){
-const db = await openDB()
-return new Promise((resolve, reject)=>{
-try{
-if(!db.objectStoreNames.contains("videos")){
-resolve(null)
-return
-}
-const tx=db.transaction("videos","readonly")
-const req = tx.objectStore("videos").get(id)
-req.onsuccess=e=>resolve(e.target.result || null)
-req.onerror=()=>reject(req.error)
-}catch(e){
-resolve(null)
 }
 })
 }
@@ -572,176 +501,6 @@ progressBox.style.display = "none"
 }
 }
 
-/* ---------------- EDIT VIDEO ---------------- */
-async function openEditModal(id){
-const video = await getVideoById(id)
-if(!video) return
-
-currentEditingVideo = video
-
-document.getElementById('editTitle').value = video.title || ''
-document.getElementById('editArtist').value = video.artist || ''
-document.getElementById('editCoverFile').value = ''
-document.getElementById('editProgressBox').style.display = 'none'
-document.getElementById('editModal').classList.add('active')
-}
-
-function closeEditModal(){
-document.getElementById('editModal').classList.remove('active')
-currentEditingVideo = null
-}
-
-async function saveVideoEdit(){
-if(!currentEditingVideo) return
-
-const newTitle = document.getElementById('editTitle').value.trim()
-const newArtist = document.getElementById('editArtist').value.trim()
-const newCoverFile = document.getElementById('editCoverFile').files[0]
-const saveBtn = document.getElementById('saveEditBtn')
-const progressBox = document.getElementById('editProgressBox')
-const progressFill = document.getElementById('editProgressFill')
-const status = document.getElementById('editStatus')
-
-if(!newTitle || !newArtist){
-alert("Titolo e artista sono obbligatori")
-return
-}
-
-try {
-saveBtn.disabled = true
-
-// Se non c'è una nuova cover, aggiorna solo i metadati
-if(!newCoverFile){
-const videoBlob = currentEditingVideo.blob
-await updateVideo(currentEditingVideo.id, videoBlob, newTitle, newArtist)
-closeEditModal()
-loadGallery()
-saveBtn.disabled = false
-return
-}
-
-// Se c'è una nuova cover, rigenera il video
-progressBox.style.display = "block"
-status.textContent = "Estrazione audio dal video..."
-
-// Estrai l'audio dal video esistente
-const videoUrl = URL.createObjectURL(currentEditingVideo.blob)
-const videoElement = document.createElement('video')
-videoElement.src = videoUrl
-await new Promise((resolve, reject) => {
-videoElement.addEventListener('loadedmetadata', resolve, {once: true})
-videoElement.addEventListener('error', reject, {once: true})
-})
-
-const duration = videoElement.duration
-
-status.textContent = "Caricamento nuova cover..."
-
-const canvas = document.createElement("canvas")
-canvas.width = 1280
-canvas.height = 720
-const ctx = canvas.getContext("2d")
-
-const img = new Image()
-const imgUrl = URL.createObjectURL(newCoverFile)
-img.src = imgUrl
-await new Promise((resolve, reject) => {
-img.onload = resolve
-img.onerror = reject
-})
-
-function drawFrame() {
-ctx.fillStyle = "#000"
-ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-const scale = Math.min(canvas.width/img.width, canvas.height/img.height) * 0.7
-const x = (canvas.width - img.width * scale) / 2
-const y = (canvas.height - img.height * scale) / 2 - 40
-ctx.drawImage(img, x, y, img.width * scale, img.height * scale)
-
-ctx.fillStyle = "#fff"
-ctx.font = "bold 48px Arial"
-ctx.textAlign = "center"
-ctx.shadowColor = "rgba(0,0,0,0.8)"
-ctx.shadowBlur = 10
-ctx.fillText(newTitle, canvas.width/2, 650)
-ctx.font = "32px Arial"
-ctx.fillText(newArtist, canvas.width/2, 700)
-ctx.shadowBlur = 0
-}
-
-drawFrame()
-
-status.textContent = "Rigenerazione video in corso..."
-
-const stream = canvas.captureStream(30)
-const audioContext = new AudioContext()
-const source = audioContext.createMediaElementSource(videoElement)
-const destination = audioContext.createMediaStreamDestination()
-source.connect(destination)
-source.connect(audioContext.destination)
-
-const audioTrack = destination.stream.getAudioTracks()[0]
-stream.addTrack(audioTrack)
-
-const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
-  ? 'video/webm;codecs=vp9,opus' 
-  : 'video/webm'
-
-const recorder = new MediaRecorder(stream, {
-  mimeType,
-  videoBitsPerSecond: 2500000
-})
-const chunks = []
-
-recorder.ondataavailable = e => {
-if(e.data.size > 0) chunks.push(e.data)
-}
-
-recorder.onstop = async () => {
-const blob = new Blob(chunks, {type: 'video/webm'})
-status.textContent = "Salvataggio..."
-await updateVideo(currentEditingVideo.id, blob, newTitle, newArtist)
-status.textContent = "✅ Video aggiornato con successo!"
-setTimeout(() => {
-closeEditModal()
-loadGallery()
-saveBtn.disabled = false
-}, 1500)
-URL.revokeObjectURL(videoUrl)
-URL.revokeObjectURL(imgUrl)
-}
-
-const renderLoop = setInterval(() => {
-drawFrame()
-}, 33)
-
-recorder.start()
-videoElement.play()
-
-const updateProgress = () => {
-const progress = (videoElement.currentTime / duration * 100)
-progressFill.style.width = progress + "%"
-progressFill.textContent = Math.round(progress) + "%"
-}
-
-const progressInterval = setInterval(updateProgress, 500)
-
-videoElement.onended = () => {
-clearInterval(progressInterval)
-clearInterval(renderLoop)
-recorder.stop()
-audioContext.close()
-}
-
-} catch(error) {
-console.error("Errore modifica:", error)
-alert("Errore durante la modifica: " + error.message)
-saveBtn.disabled = false
-progressBox.style.display = "none"
-}
-}
-
 /* ---------------- IMPORT VIDEO ---------------- */
 let selectedFile = null
 const uploadArea = document.getElementById('uploadArea')
@@ -815,4 +574,247 @@ mp3UploadArea.classList.add("dragover")
 mp3UploadArea.ondragleave = () => mp3UploadArea.classList.remove("dragover")
 mp3UploadArea.ondrop = e => {
 e.preventDefault()
-mp3UploadArea.classList.remove("
+mp3UploadArea.classList.remove("dragover")
+handleMP3File(e.dataTransfer.files[0])
+}
+
+function handleMP3File(f){
+if(!f || !f.type.startsWith("audio/")) {
+alert("Seleziona un file audio valido (MP3, WAV, ecc.)")
+return
+}
+selectedMP3 = f
+mp3UploadArea.innerHTML = "✅ " + f.name
+mp3Btn.disabled = false
+}
+
+async function importMP3(){
+if(!selectedMP3) return
+
+const title = document.getElementById('mp3Title').value.trim() || selectedMP3.name.replace(/\.[^/.]+$/, '')
+const artist = document.getElementById('mp3Artist').value.trim() || "Artista sconosciuto"
+
+mp3Btn.disabled = true
+mp3Btn.textContent = "Importazione..."
+
+try {
+const arrayBuffer = await selectedMP3.arrayBuffer()
+const blob = new Blob([arrayBuffer], {type: selectedMP3.type || 'audio/mpeg'})
+await saveMP3(blob, title, artist)
+loadGallery()
+
+document.getElementById('mp3Title').value = ""
+document.getElementById('mp3Artist').value = ""
+mp3UploadArea.innerHTML = "🎵 Clicca o trascina MP3"
+selectedMP3 = null
+mp3Btn.textContent = "Aggiungi MP3"
+mp3Btn.disabled = true
+} catch(error) {
+console.error("Errore importazione MP3:", error)
+alert("Errore nell'importazione MP3: " + error.message)
+mp3Btn.disabled = false
+mp3Btn.textContent = "Aggiungi MP3"
+}
+}
+
+/* ---------------- IMPORT PDF ---------------- */
+let selectedPDF = null
+const pdfUploadArea = document.getElementById('pdfUploadArea')
+const pdfFileInput = document.getElementById('pdfFile')
+const pdfBtn = document.getElementById('pdfBtn')
+
+pdfUploadArea.onclick = () => pdfFileInput.click()
+pdfFileInput.onchange = e => handlePDFFile(e.target.files[0])
+pdfUploadArea.ondragover = e => {
+e.preventDefault()
+pdfUploadArea.classList.add("dragover")
+}
+pdfUploadArea.ondragleave = () => pdfUploadArea.classList.remove("dragover")
+pdfUploadArea.ondrop = e => {
+e.preventDefault()
+pdfUploadArea.classList.remove("dragover")
+handlePDFFile(e.dataTransfer.files[0])
+}
+
+function handlePDFFile(f){
+if(!f || f.type !== "application/pdf") {
+alert("Seleziona un file PDF valido")
+return
+}
+selectedPDF = f
+pdfUploadArea.innerHTML = "✅ " + f.name
+pdfBtn.disabled = false
+}
+
+async function importPDF(){
+if(!selectedPDF) return
+
+const title = document.getElementById('pdfTitle').value.trim() || selectedPDF.name
+const description = document.getElementById('pdfDescription').value.trim() || ""
+
+pdfBtn.disabled = true
+pdfBtn.textContent = "Importazione..."
+
+try {
+const arrayBuffer = await selectedPDF.arrayBuffer()
+const blob = new Blob([arrayBuffer], {type: 'application/pdf'})
+await savePDF(blob, title, description)
+loadGallery()
+
+document.getElementById('pdfTitle').value = ""
+document.getElementById('pdfDescription').value = ""
+pdfUploadArea.innerHTML = "📄 Clicca o trascina PDF"
+selectedPDF = null
+pdfBtn.textContent = "Aggiungi PDF"
+pdfBtn.disabled = true
+} catch(error) {
+console.error("Errore importazione PDF:", error)
+alert("Errore nell'importazione PDF: " + error.message)
+pdfBtn.disabled = false
+pdfBtn.textContent = "Aggiungi PDF"
+}
+}
+
+function viewPDF(id){
+getPDFs().then(pdfs => {
+const pdf = pdfs.find(p => p.id === id)
+if(pdf){
+const url = URL.createObjectURL(pdf.blob)
+window.open(url, '_blank')
+}
+})
+}
+
+let currentAudio = null
+
+function playMP3(id){
+getMP3s().then(mp3s => {
+const mp3 = mp3s.find(m => m.id === id)
+if(mp3){
+if(currentAudio){
+currentAudio.pause()
+currentAudio = null
+}
+const url = URL.createObjectURL(mp3.blob)
+currentAudio = new Audio(url)
+currentAudio.play()
+}
+})
+}
+
+/* ---------------- GALLERY ---------------- */
+async function loadGallery(){
+try {
+const vids = await getVideos()
+const pdfs = await getPDFs()
+const mp3s = await getMP3s()
+const videoGrid = document.getElementById('videoGrid')
+const pdfGrid = document.getElementById('pdfGrid')
+const mp3Grid = document.getElementById('mp3Grid')
+const gallery = document.getElementById('gallery')
+const pdfGallery = document.getElementById('pdfGallery')
+const mp3Gallery = document.getElementById('mp3Gallery')
+const empty = document.getElementById('empty')
+
+videoGrid.innerHTML = ""
+pdfGrid.innerHTML = ""
+mp3Grid.innerHTML = ""
+
+const hasVideos = vids && vids.length > 0
+const hasPDFs = pdfs && pdfs.length > 0
+const hasMP3s = mp3s && mp3s.length > 0
+
+if(!hasVideos && !hasPDFs && !hasMP3s){
+gallery.style.display = "none"
+pdfGallery.style.display = "none"
+mp3Gallery.style.display = "none"
+empty.style.display = "block"
+return
+}
+
+empty.style.display = "none"
+
+// Load videos
+if(hasVideos){
+vids.sort((a,b) => b.date - a.date).forEach(v => {
+const url = URL.createObjectURL(v.blob)
+const card = document.createElement('div')
+card.className = 'video-card'
+card.innerHTML = `
+<video src="${url}" controls preload="metadata"></video>
+<div class="video-info"><b>${v.title || 'Video'}</b><br>${v.artist || ''}</div>
+<div class="video-actions">
+<a class="download-btn" href="${url}" download="${v.title || 'video'}.webm">Scarica</a>
+<button class="delete-btn" onclick="deleteVideo('${v.id}')">Elimina</button>
+</div>`
+videoGrid.appendChild(card)
+})
+gallery.style.display = "block"
+}else{
+gallery.style.display = "none"
+}
+
+// Load MP3s
+if(hasMP3s){
+mp3s.sort((a,b) => b.date - a.date).forEach(m => {
+const url = URL.createObjectURL(m.blob)
+const card = document.createElement('div')
+card.className = 'video-card pdf-card'
+card.innerHTML = `
+<div class="mp3-icon">🎵</div>
+<div class="video-info">
+<b>${m.title || 'Audio'}</b><br>
+<small style="color:#999">${m.artist || 'Artista sconosciuto'}</small>
+</div>
+<div class="video-actions">
+<button class="play-btn" onclick="playMP3('${m.id}')">Ascolta</button>
+<a class="download-btn" href="${url}" download="${m.title || 'audio'}.mp3">Scarica</a>
+<button class="delete-btn" onclick="deleteMP3('${m.id}')">Elimina</button>
+</div>`
+mp3Grid.appendChild(card)
+})
+mp3Gallery.style.display = "block"
+}else{
+mp3Gallery.style.display = "none"
+}
+
+// Load PDFs
+if(hasPDFs){
+pdfs.sort((a,b) => b.date - a.date).forEach(p => {
+const url = URL.createObjectURL(p.blob)
+const card = document.createElement('div')
+card.className = 'video-card pdf-card'
+card.innerHTML = `
+<div class="pdf-icon">📄</div>
+<div class="video-info">
+<b>${p.title || 'PDF'}</b><br>
+<small style="color:#999">${p.description || 'Nessuna descrizione'}</small>
+</div>
+<div class="video-actions">
+<button class="view-btn" onclick="viewPDF('${p.id}')">Visualizza</button>
+<a class="download-btn" href="${url}" download="${p.title || 'documento'}.pdf">Scarica</a>
+<button class="delete-btn" onclick="deletePDF('${p.id}')">Elimina</button>
+</div>`
+pdfGrid.appendChild(card)
+})
+pdfGallery.style.display = "block"
+}else{
+pdfGallery.style.display = "none"
+}
+
+} catch(error) {
+console.error("Errore caricamento galleria:", error)
+}
+}
+
+window.onload = ()=>{
+openDB().then(()=>{
+loadGallery()
+}).catch(err=>{
+console.error("Errore apertura DB:", err)
+})
+}
+</script>
+
+</body>
+</html>
