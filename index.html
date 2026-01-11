@@ -11,40 +11,25 @@ body{margin:0;background:#111;color:#fff}
 header{padding:30px;text-align:center;background:linear-gradient(135deg,#d6004c,#7b1fa2)}
 .container{max-width:1000px;margin:auto;padding:40px 20px}
 .tabs{display:flex;gap:10px;margin-bottom:30px;flex-wrap:wrap}
-.tab{flex:1;min-width:150px;padding:15px;background:#1e1e1e;border:none;color:#fff;cursor:pointer;border-radius:12px}
+.tab{flex:1;padding:15px;background:#1e1e1e;border:none;color:#fff;border-radius:12px;cursor:pointer}
 .tab.active{background:linear-gradient(135deg,#d6004c,#7b1fa2)}
 .section{display:none}
 .section.active{display:block}
 .upload-box{background:#1e1e1e;padding:25px;border-radius:12px;margin-bottom:40px}
 input{width:100%;padding:12px;margin-bottom:15px;border-radius:8px;border:none}
 input[type=file]{background:#fff;color:#000}
-label{color:#aaa}
 button{background:#d6004c;color:#fff;border:none;padding:12px 24px;border-radius:25px;cursor:pointer}
-button:disabled{background:#555}
 .video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px}
 .video-card{background:#1e1e1e;border-radius:12px;overflow:hidden}
-.video-card video{width:100%;height:200px;object-fit:cover}
+video{width:100%;height:200px;object-fit:cover}
 .video-info{padding:15px}
 .video-actions{display:flex;gap:8px;padding:0 15px 15px}
-.download-btn,.delete-btn,.edit-btn,.play-btn,.view-btn{
-flex:1;padding:8px;border-radius:8px;border:none;cursor:pointer;color:#fff;text-align:center
-}
-.download-btn{background:#d6004c;text-decoration:none}
-.delete-btn{background:#444}
+.download-btn,.edit-btn,.delete-btn{flex:1;padding:8px;border:none;border-radius:8px;cursor:pointer;color:#fff}
+.download-btn{background:#d6004c;text-decoration:none;text-align:center}
 .edit-btn{background:#7b1fa2}
-.play-btn{background:#4caf50}
-.view-btn{background:#2196f3}
-.gallery{margin-top:40px}
-.empty{text-align:center;color:#777;padding:60px}
-
-/* MODAL */
-.modal{
-position:fixed;inset:0;background:rgba(0,0,0,.7);
-display:none;align-items:center;justify-content:center
-}
-.modal-content{
-background:#1e1e1e;padding:25px;border-radius:12px;width:90%;max-width:400px
-}
+.delete-btn{background:#444}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center}
+.modal-content{background:#1e1e1e;padding:25px;border-radius:12px;width:90%;max-width:400px}
 </style>
 </head>
 
@@ -52,20 +37,12 @@ background:#1e1e1e;padding:25px;border-radius:12px;width:90%;max-width:400px
 
 <header>
 <h1>🎶 My Music Studio</h1>
-<p>Gestion locale vidéo / audio / PDF (IndexedDB)</p>
+<p>Gestion locale vidéo (IndexedDB)</p>
 </header>
 
 <div class="container">
 
-<div class="tabs">
-<button class="tab active" onclick="switchTab('create')">🎬 Crea Video</button>
-<button class="tab" onclick="switchTab('import')">📤 Importa Video</button>
-<button class="tab" onclick="switchTab('mp3')">🎵 Importa MP3</button>
-<button class="tab" onclick="switchTab('pdf')">📄 Importa PDF</button>
-</div>
-
-<!-- CREA VIDEO -->
-<div id="createSection" class="section active">
+<!-- CREAZIONE -->
 <div class="upload-box">
 <input id="title" placeholder="Titolo">
 <input id="artist" placeholder="Artista">
@@ -75,57 +52,13 @@ background:#1e1e1e;padding:25px;border-radius:12px;width:90%;max-width:400px
 <input type="file" id="audioFile" accept="audio/*">
 <button onclick="createVideo()">Crea Video</button>
 </div>
-</div>
 
-<!-- IMPORT VIDEO -->
-<div id="importSection" class="section">
-<div class="upload-box">
-<input id="importTitle" placeholder="Titolo video">
-<input id="importArtist" placeholder="Artista">
-<input type="file" id="importFile" accept="video/*">
-<button onclick="importVideo()">Importa Video</button>
-</div>
-</div>
-
-<!-- IMPORT MP3 -->
-<div id="mp3Section" class="section">
-<div class="upload-box">
-<input id="mp3Title" placeholder="Titolo">
-<input id="mp3Artist" placeholder="Artista">
-<input type="file" id="mp3File" accept="audio/*">
-<button onclick="importMP3()">Importa MP3</button>
-</div>
-</div>
-
-<!-- IMPORT PDF -->
-<div id="pdfSection" class="section">
-<div class="upload-box">
-<input id="pdfTitle" placeholder="Titolo PDF">
-<input type="file" id="pdfFile" accept="application/pdf">
-<button onclick="importPDF()">Importa PDF</button>
-</div>
-</div>
-
-<div class="gallery" id="gallery">
 <h2>🎞️ Video</h2>
 <div id="videoGrid" class="video-grid"></div>
-</div>
-
-<div class="gallery" id="mp3Gallery">
-<h2>🎵 MP3</h2>
-<div id="mp3Grid" class="video-grid"></div>
-</div>
-
-<div class="gallery" id="pdfGallery">
-<h2>📄 PDF</h2>
-<div id="pdfGrid" class="video-grid"></div>
-</div>
-
-<div class="empty" id="empty">Nessun contenuto</div>
 
 </div>
 
-<!-- MODAL EDIT -->
+<!-- MODAL -->
 <div class="modal" id="editModal">
 <div class="modal-content">
 <h3>✏️ Modifica Video</h3>
@@ -139,47 +72,37 @@ background:#1e1e1e;padding:25px;border-radius:12px;width:90%;max-width:400px
 </div>
 
 <script>
-let db,currentEditId=null,currentAudio=null
+let db,currentEditId=null
 
 /* DB */
 function openDB(){
 return new Promise(res=>{
-const r=indexedDB.open("VideoDB",7)
+const r=indexedDB.open("VideoDB",10)
 r.onupgradeneeded=e=>{
 const d=e.target.result
-if(!d.objectStoreNames.contains("videos"))d.createObjectStore("videos",{keyPath:"id"})
-if(!d.objectStoreNames.contains("mp3s"))d.createObjectStore("mp3s",{keyPath:"id"})
-if(!d.objectStoreNames.contains("pdfs"))d.createObjectStore("pdfs",{keyPath:"id"})
+if(!d.objectStoreNames.contains("videos"))
+d.createObjectStore("videos",{keyPath:"id"})
 }
 r.onsuccess=e=>{db=e.target.result;res()}
 })
 }
 const store=(n,m)=>db.transaction(n,m).objectStore(n)
 
-/* UI */
-function switchTab(t){
-document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'))
-document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'))
-document.getElementById(t+'Section').classList.add('active')
-event.target.classList.add('active')
-}
-
-/* CREATE VIDEO */
+/* CREA VIDEO */
 async function createVideo(){
-const t=title.value,a=artist.value
-const c=coverFile.files[0],au=audioFile.files[0]
-if(!t||!a||!c||!au)return alert("Completa tutti i campi")
+if(!title.value||!artist.value||!coverFile.files[0]||!audioFile.files[0])
+return alert("Compila tutto")
 
 const canvas=document.createElement("canvas")
 canvas.width=1280;canvas.height=720
 const ctx=canvas.getContext("2d")
 const img=new Image()
-img.src=URL.createObjectURL(c)
+img.src=URL.createObjectURL(coverFile.files[0])
 await img.decode()
 ctx.drawImage(img,0,0,canvas.width,canvas.height)
 
 const stream=canvas.captureStream(30)
-const audio=new Audio(URL.createObjectURL(au))
+const audio=new Audio(URL.createObjectURL(audioFile.files[0]))
 const ac=new AudioContext()
 const src=ac.createMediaElementSource(audio)
 const dest=ac.createMediaStreamDestination()
@@ -191,11 +114,13 @@ let chunks=[]
 rec.ondataavailable=e=>chunks.push(e.data)
 rec.onstop=async()=>{
 store("videos","readwrite").put({
-id:Date.now().toString(),
+id:crypto.randomUUID(),
 blob:new Blob(chunks,{type:"video/webm"}),
-title:t,artist:a,
-coverBlob:await c.arrayBuffer(),
-coverType:c.type,
+title:title.value,
+artist:artist.value,
+cover:await coverFile.files[0].arrayBuffer(),
+coverType:coverFile.files[0].type,
+coverUpdated:Date.now(),
 date:Date.now()
 })
 loadGallery()
@@ -205,52 +130,51 @@ audio.play()
 audio.onended=()=>rec.stop()
 }
 
-/* IMPORT VIDEO */
-function importVideo(){
-const f=importFile.files[0]; if(!f)return
-store("videos","readwrite").put({
-id:Date.now().toString(),
-blob:f,
-title:importTitle.value||"Video",
-artist:importArtist.value||"",
-date:Date.now()
-})
-loadGallery()
-}
+/* GALLERY */
+function loadGallery(){
+videoGrid.innerHTML=""
+store("videos","readonly").getAll().onsuccess=e=>{
+e.target.result.forEach(v=>{
+const videoURL=URL.createObjectURL(v.blob)
+const poster=v.cover
+?URL.createObjectURL(new Blob([v.cover],{type:v.coverType}))+"?t="+v.coverUpdated
+:""
 
-/* MP3 */
-function importMP3(){
-const f=mp3File.files[0]; if(!f)return
-store("mp3s","readwrite").put({
-id:Date.now().toString(),
-blob:f,title:mp3Title.value||f.name,
-artist:mp3Artist.value||"",date:Date.now()
-})
-loadGallery()
-}
-function playMP3(id){
-store("mp3s","readonly").get(id).onsuccess=e=>{
-if(currentAudio)currentAudio.pause()
-currentAudio=new Audio(URL.createObjectURL(e.target.result.blob))
-currentAudio.play()
-}
-}
+const card=document.createElement("div")
+card.className="video-card"
+card.innerHTML=`
+<video preload="none"
+       data-key="${v.coverUpdated}"
+       src="${videoURL}"
+       ${poster?`poster="${poster}"`:""}
+       controls></video>
 
-/* PDF */
-function importPDF(){
-const f=pdfFile.files[0]; if(!f)return
-store("pdfs","readwrite").put({
-id:Date.now().toString(),
-blob:f,title:pdfTitle.value||f.name,date:Date.now()
-})
+<div class="video-info">
+<b>${v.title}</b><br>${v.artist}
+</div>
+
+<div class="video-actions">
+<a class="download-btn" href="${videoURL}" download="${v.title}.webm">⬇️</a>
+<button class="edit-btn">✏️</button>
+<button class="delete-btn">🗑️</button>
+</div>
+`
+card.querySelector(".edit-btn").onclick=()=>openEdit(v)
+card.querySelector(".delete-btn").onclick=()=>{
+store("videos","readwrite").delete(v.id)
 loadGallery()
+}
+videoGrid.appendChild(card)
+})
+}
 }
 
 /* EDIT */
 function openEdit(v){
 currentEditId=v.id
-editTitle.value=v.title||""
-editArtist.value=v.artist||""
+editTitle.value=v.title
+editArtist.value=v.artist
+editCover.value=""
 editModal.style.display="flex"
 }
 function closeEdit(){editModal.style.display="none"}
@@ -261,59 +185,13 @@ const v=e.target.result
 v.title=editTitle.value
 v.artist=editArtist.value
 if(editCover.files[0]){
-v.coverBlob=await editCover.files[0].arrayBuffer()
+v.cover=await editCover.files[0].arrayBuffer()
 v.coverType=editCover.files[0].type
+v.coverUpdated=Date.now()
 }
 store("videos","readwrite").put(v)
-closeEdit();loadGallery()
-}
-}
-
-/* GALLERY */
-function loadGallery(){
-videoGrid.innerHTML=mp3Grid.innerHTML=pdfGrid.innerHTML=""
-
-store("videos","readonly").getAll().onsuccess=e=>{
-e.target.result.forEach(v=>{
-const videoURL=URL.createObjectURL(v.blob)
-const poster=v.coverBlob
-?URL.createObjectURL(new Blob([v.coverBlob],{type:v.coverType})):""
-
-const name=(v.title||"video").replace(/[^\w]+/g,"_").toLowerCase()
-
-videoGrid.innerHTML+=`
-<div class="video-card">
-<video src="${videoURL}" ${poster?`poster="${poster}"`:""} controls></video>
-<div class="video-info"><b>${v.title}</b><br>${v.artist}</div>
-<div class="video-actions">
-<a class="download-btn" href="${videoURL}" download="${name}.webm">⬇️ Télécharger</a>
-<button class="edit-btn" onclick='openEdit(${JSON.stringify(v)})'>✏️</button>
-<button class="delete-btn" onclick='store("videos","readwrite").delete("${v.id}");loadGallery()'>🗑️</button>
-</div>
-</div>`
-})
-}
-
-store("mp3s","readonly").getAll().onsuccess=e=>{
-e.target.result.forEach(m=>{
-mp3Grid.innerHTML+=`
-<div class="video-card">
-<div class="video-info"><b>${m.title}</b><br>${m.artist}</div>
-<div class="video-actions">
-<button class="play-btn" onclick="playMP3('${m.id}')">▶️</button>
-</div></div>`
-})
-}
-
-store("pdfs","readonly").getAll().onsuccess=e=>{
-e.target.result.forEach(p=>{
-pdfGrid.innerHTML+=`
-<div class="video-card">
-<div class="video-info"><b>${p.title}</b></div>
-<div class="video-actions">
-<a class="download-btn" href="${URL.createObjectURL(p.blob)}" target="_blank">Apri</a>
-</div></div>`
-})
+closeEdit()
+loadGallery()
 }
 }
 
