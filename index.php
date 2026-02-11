@@ -1,4 +1,7 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 /* ══════════════════════════════════════════════════
    BACKEND PHP — SUPERDATA TRANSCRIPTION
 ══════════════════════════════════════════════════ */
@@ -10,11 +13,16 @@ if (isset($_GET['action']) && $_GET['action'] === 'transcribe') {
     $apiKey = "sd_2e33ada3c7fabb785c23cc14fe8420a7";
 
     if (!isset($_FILES['file'])) {
-        echo json_encode(["error" => "No file uploaded"]);
+        echo json_encode(["error" => "Nessun file ricevuto"]);
         exit;
     }
 
     $tmpFile = $_FILES['file']['tmp_name'];
+
+    if (!file_exists($tmpFile)) {
+        echo json_encode(["error" => "File temporaneo non trovato"]);
+        exit;
+    }
 
     $ch = curl_init();
 
@@ -22,6 +30,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'transcribe') {
         CURLOPT_URL => "https://api.superdata.ai/v1/audio/transcriptions",
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
+        CURLOPT_TIMEOUT => 120,
         CURLOPT_HTTPHEADER => [
             "Authorization: Bearer $apiKey"
         ],
@@ -32,9 +41,40 @@ if (isset($_GET['action']) && $_GET['action'] === 'transcribe') {
     ]);
 
     $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+    if ($response === false) {
+        echo json_encode([
+            "error" => "Errore cURL: " . curl_error($ch)
+        ]);
+        curl_close($ch);
+        exit;
+    }
+
     curl_close($ch);
 
-    echo $response;
+    if ($httpCode !== 200) {
+        echo json_encode([
+            "error" => "Errore API HTTP $httpCode",
+            "response" => $response
+        ]);
+        exit;
+    }
+
+    $decoded = json_decode($response, true);
+
+    if (!isset($decoded['text'])) {
+        echo json_encode([
+            "error" => "Risposta API non valida",
+            "response" => $decoded
+        ]);
+        exit;
+    }
+
+    echo json_encode([
+        "text" => $decoded['text']
+    ]);
+
     exit;
 }
 ?>
@@ -43,7 +83,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'transcribe') {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>My Music Studio — Superdata Edition</title>
+<title>Music Studio</title>
 
 <style>
 body{
@@ -59,7 +99,6 @@ padding:20px;
 background:#111;
 text-align:center;
 font-size:22px;
-letter-spacing:2px;
 }
 
 .container{
@@ -73,16 +112,6 @@ background:#16161f;
 padding:20px;
 border-radius:10px;
 margin-bottom:20px;
-}
-
-input[type=text]{
-width:100%;
-padding:10px;
-margin-bottom:10px;
-background:#1e1e2a;
-border:1px solid #333;
-color:white;
-border-radius:6px;
 }
 
 .dropzone{
@@ -100,10 +129,7 @@ border:none;
 padding:12px 20px;
 border-radius:6px;
 cursor:pointer;
-}
-
-button:hover{
-opacity:0.8;
+margin-top:15px;
 }
 
 .transcript{
@@ -111,31 +137,28 @@ margin-top:15px;
 background:#1e1e2a;
 padding:15px;
 border-radius:8px;
-display:none;
 white-space:pre-wrap;
+display:none;
 }
 </style>
 </head>
 <body>
 
-<header>🎶 MUSIC STUDIO — SUPERDATA AI</header>
+<header>🎶 MUSIC STUDIO</header>
 
 <div class="container">
 
 <div class="card">
-<h3>🎵 Crea Video con Trascrizione Automatica</h3>
 
-<input type="text" id="title" placeholder="Titolo">
-<input type="text" id="artist" placeholder="Artista">
+<h3>🎧 Carica Audio</h3>
 
-<div class="dropzone" id="dz_audio">
-🎧 Clicca o trascina audio
+<div class="dropzone" id="dz">
+Clicca o trascina audio
 </div>
 
 <input type="file" id="audioFile" accept="audio/*" hidden>
 
-<br>
-<button onclick="createVideo()">🎬 Genera Video</button>
+<button onclick="startTranscription()">🎙️ Trascrivi</button>
 
 <div class="transcript" id="transcriptBox"></div>
 
@@ -146,8 +169,9 @@ white-space:pre-wrap;
 <script>
 let selectedAudio = null;
 
-const dz = document.getElementById("dz_audio");
+const dz = document.getElementById("dz");
 const input = document.getElementById("audioFile");
+const box = document.getElementById("transcriptBox");
 
 dz.onclick = () => input.click();
 
@@ -156,9 +180,7 @@ input.onchange = e => {
     dz.innerHTML = "✅ " + selectedAudio.name;
 };
 
-dz.ondragover = e => {
-    e.preventDefault();
-};
+dz.ondragover = e => e.preventDefault();
 
 dz.ondrop = e => {
     e.preventDefault();
@@ -166,34 +188,37 @@ dz.ondrop = e => {
     dz.innerHTML = "✅ " + selectedAudio.name;
 };
 
-async function transcribeAudio(file){
-    const fd = new FormData();
-    fd.append("file", file);
-
-    const res = await fetch("?action=transcribe",{
-        method:"POST",
-        body:fd
-    });
-
-    const data = await res.json();
-    return data.text || "Trascrizione non disponibile";
-}
-
-async function createVideo(){
+async function startTranscription(){
 
     if(!selectedAudio){
         alert("Seleziona un audio");
         return;
     }
 
-    document.getElementById("transcriptBox").style.display="block";
-    document.getElementById("transcriptBox").innerHTML="🎙️ Trascrizione in corso...";
+    box.style.display="block";
+    box.innerHTML="🎙️ Trascrizione in corso...";
 
-    const text = await transcribeAudio(selectedAudio);
+    try{
+        const fd = new FormData();
+        fd.append("file", selectedAudio);
 
-    document.getElementById("transcriptBox").innerHTML=text;
+        const res = await fetch("?action=transcribe",{
+            method:"POST",
+            body:fd
+        });
 
-    alert("Video generato (demo) con testo trascritto!");
+        const data = await res.json();
+
+        if(data.error){
+            box.innerHTML = "❌ ERRORE:\n" + data.error + "\n\n" + (data.response ? JSON.stringify(data.response, null, 2) : "");
+            return;
+        }
+
+        box.innerHTML = data.text;
+
+    } catch(err){
+        box.innerHTML = "❌ Errore JavaScript: " + err.message;
+    }
 }
 </script>
 
