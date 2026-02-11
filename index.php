@@ -1,159 +1,912 @@
 <?php
-/* ================= CONFIG ================= */
-$base = __DIR__."/uploads";
-$dirs = ["covers","mp3","meta","subs","videos"];
-foreach($dirs as $d){
-    if(!is_dir("$base/$d")) mkdir("$base/$d",0777,true);
+/* ================= CONFIG PHP ================= */
+$baseDir = __DIR__ . "/uploads";
+$folders = ["covers","mp3","subs","meta"];
+foreach($folders as $f){
+    if(!is_dir("$baseDir/$f")) mkdir("$baseDir/$f",0777,true);
 }
 
-/* ================= AI TRASCRIZIONE SIMULATA ================= */
-function ai_transcribe($audio){
-    return "Questa è una trascrizione AI simulata del testo della canzone.";
+/* ================= FUNZIONI ================= */
+// Funzione per chiamare l'API SuperData AI
+function superdataTranscribe($audioFilePath){
+    $apiKey = "TUO_SUPERDATA_API_KEY"; // <-- inserisci qui la tua chiave API
+    $url = "https://api.superdata.ai/v1/transcribe"; // esempio endpoint
+    
+    $cfile = curl_file_create($audioFilePath);
+    $postFields = ['audio' => $cfile];
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        "Authorization: Bearer $apiKey"
+    ]);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+    $response = curl_exec($ch);
+    if(curl_errno($ch)){
+        curl_close($ch);
+        return "Errore API SuperData: " . curl_error($ch);
+    }
+    curl_close($ch);
+
+    $res = json_decode($response,true);
+    // Supponiamo che l'API ritorni testo in $res['transcript']
+    return $res['transcript'] ?? "Trascrizione non disponibile";
 }
 
-/* ================= CREA SOTTOTITOLI ================= */
-function make_vtt($text,$path){
-    $vtt="WEBVTT\n\n";
-    $t=0;
-    foreach(explode(".", $text) as $line){
-        if(trim($line)){
-            $start=gmdate("H:i:s",$t).".000";
-            $t+=4;
-            $end=gmdate("H:i:s",$t).".000";
-            $vtt.="$start --> $end\n$line\n\n";
+// Funzione per generare VTT dai sottotitoli
+function createVTT($text, $path){
+    $vtt = "WEBVTT\n\n";
+    $lines = explode(".", $text);
+    $t = 0;
+    foreach($lines as $line){
+        $line = trim($line);
+        if($line){
+            $start = gmdate("H:i:s",$t).".000";
+            $t += 4;
+            $end = gmdate("H:i:s",$t).".000";
+            $vtt .= "$start --> $end\n$line\n\n";
         }
     }
-    file_put_contents($path,$vtt);
+    file_put_contents($path, $vtt);
 }
 
-/* ================= UPLOAD ================= */
-if($_SERVER["REQUEST_METHOD"]==="POST"){
-    $id=time();
-    $title=$_POST["title"];
-    $artist=$_POST["artist"];
+/* ================= UPLOAD E TRASCRIZIONE ================= */
+if($_SERVER["REQUEST_METHOD"]==="POST" && isset($_FILES['audioFile'], $_FILES['coverFile'], $_POST['title'], $_POST['artist'])){
+    $id = time();
+    $title = trim($_POST['title']);
+    $artist = trim($_POST['artist']);
 
-    move_uploaded_file($_FILES["cover"]["tmp_name"],"$base/covers/$id.jpg");
-    move_uploaded_file($_FILES["audio"]["tmp_name"],"$base/mp3/$id.mp3");
+    // Salvataggio cover e audio
+    $coverPath = "$baseDir/covers/$id.jpg";
+    $audioPath = "$baseDir/mp3/$id.mp3";
+    move_uploaded_file($_FILES['coverFile']['tmp_name'], $coverPath);
+    move_uploaded_file($_FILES['audioFile']['tmp_name'], $audioPath);
 
-    $text=ai_transcribe("$base/mp3/$id.mp3");
-    make_vtt($text,"$base/subs/$id.vtt");
+    // Chiamata a SuperData AI per trascrivere l'audio
+    $transcript = superdataTranscribe($audioPath);
 
-    file_put_contents("$base/meta/$id.json",json_encode([
+    // Creazione file VTT
+    $vttPath = "$baseDir/subs/$id.vtt";
+    createVTT($transcript, $vttPath);
+
+    // Salvataggio metadati
+    $metaPath = "$baseDir/meta/$id.json";
+    file_put_contents($metaPath, json_encode([
         "title"=>$title,
-        "artist"=>$artist
+        "artist"=>$artist,
+        "cover"=>"covers/$id.jpg",
+        "audio"=>"mp3/$id.mp3",
+        "vtt"=>"subs/$id.vtt",
+        "date"=>time()
     ]));
 
-    header("Location: index.php");
+    header("Location: ".$_SERVER['PHP_SELF']);
     exit;
 }
-
-/* ================= LEGGI DATI ================= */
-$items = glob("$base/meta/*.json");
 ?>
+
 <!DOCTYPE html>
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<title>My Music Studio AI</title>
+<title>My Music Studio – Cover Video</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <style>
-body{background:#111;color:#fff;font-family:Arial;margin:0;padding:20px}
-.card{background:#1e1e1e;padding:20px;border-radius:12px;margin-bottom:20px}
-video,img,audio{width:100%;border-radius:10px;margin-bottom:10px}
-button{padding:10px 15px;border:none;border-radius:8px;background:#d6004c;color:#fff;cursor:pointer;margin-bottom:10px}
+*{box-sizing:border-box;font-family:Arial,sans-serif}
+body{margin:0;background:#111;color:#fff}
+header{padding:30px;text-align:center;background:linear-gradient(135deg,#d6004c,#7b1fa2)}
+.container{max-width:1000px;margin:auto;padding:40px 20px}
+.tabs{display:flex;gap:10px;margin-bottom:30px;flex-wrap:wrap}
+.tab{flex:1;min-width:150px;padding:15px;background:#1e1e1e;border:none;color:#fff;cursor:pointer;border-radius:12px}
+.tab.active{background:linear-gradient(135deg,#d6004c,#7b1fa2)}
+.section{display:none}
+.section.active{display:block}
+.upload-box{background:#1e1e1e;padding:25px;border-radius:12px;margin-bottom:40px}
+input{width:100%;padding:12px;margin-bottom:15px;border-radius:8px;border:none}
+input[type=file]{background:#fff;color:#000}
+label{display:block;margin-top:10px;margin-bottom:5px;color:#aaa}
+button{background:#d6004c;color:#fff;border:none;padding:12px 24px;border-radius:25px;cursor:pointer}
+button:disabled{background:#555;cursor:not-allowed}
+.upload-area{border:3px dashed #d6004c;border-radius:12px;padding:40px;text-align:center;cursor:pointer}
+.upload-area.dragover{background:#2a2a2a}
+.gallery{margin-top:40px}
+.video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px}
+.video-card{background:#1e1e1e;border-radius:12px;overflow:hidden}
+.video-card video{width:100%;height:200px;object-fit:cover}
+.video-info{padding:15px}
+.video-actions{display:flex;gap:10px;padding:0 15px 15px}
+.download-btn{flex:1;background:#d6004c;color:#fff;text-decoration:none;padding:8px;border-radius:8px;text-align:center;display:flex;align-items:center;justify-content:center}
+.delete-btn{flex:1;background:#444;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:8px}
+.view-btn{flex:1;background:#7b1fa2;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:8px}
+.play-btn{flex:1;background:#4caf50;color:#fff;border:none;border-radius:8px;cursor:pointer;padding:8px}
+.empty{text-align:center;color:#777;padding:60px}
+.progress{display:none;margin-top:15px}
+.progress-bar{height:25px;background:#333;border-radius:15px;overflow:hidden}
+.progress-fill{height:100%;width:0;background:linear-gradient(90deg,#d6004c,#7b1fa2);text-align:center;line-height:25px;transition:width 0.3s}
+.status{margin-top:10px;color:#aaa;font-size:14px}
+.pdf-card{background:#1e1e1e;border-radius:12px;overflow:hidden;padding:20px}
+.pdf-icon,.mp3-icon{font-size:80px;text-align:center;margin-bottom:15px}
+footer{text-align:center;padding:20px;color:#777}
 </style>
 </head>
+
 <body>
 
-<h1>🎶 My Music Studio AI</h1>
+<header>
+<h1>🎶 My Music Studio</h1>
+<p>Crea e gestisci video, audio e PDF localmente</p>
+</header>
 
-<form method="post" enctype="multipart/form-data" style="margin-bottom:30px">
-<input name="title" placeholder="Titolo" required><br>
-<input name="artist" placeholder="Artista" required><br>
-<label>Cover</label>
-<input type="file" name="cover" accept="image/*" required><br>
-<label>Audio</label>
-<input type="file" name="audio" accept="audio/*" required><br>
-<button>Upload + Trascrizione AI</button>
-</form>
+<div class="container">
 
-<hr>
-
-<?php foreach($items as $m):
-$id=basename($m,".json");
-$meta=json_decode(file_get_contents($m),true);
-?>
-<div class="card">
-<h3><?=htmlspecialchars($meta["title"])?> — <?=htmlspecialchars($meta["artist"])?></h3>
-
-<!-- VIDEO GENERATO IN BROWSER -->
-<video id="video_<?=$id?>" controls>
-<source src="<?= "uploads/videos/$id.webm" ?>">
-<track src="<?= "uploads/subs/$id.vtt" ?>" kind="subtitles" srclang="it" label="Italiano" default>
-</video>
-
-<img src="<?= "uploads/covers/$id.jpg" ?>">
-
-<audio src="<?= "uploads/mp3/$id.mp3" ?>" controls></audio>
-
-<!-- BOTTONE GENERA VIDEO -->
-<button onclick="generateVideo('<?=$id?>')">🎬 Generate Video</button>
+<div class="tabs">
+<button class="tab active" onclick="switchTab('create')">🎬 Crea Video</button>
+<button class="tab" onclick="switchTab('import')">📤 Importa Video</button>
+<button class="tab" onclick="switchTab('mp3')">🎵 Importa MP3</button>
+<button class="tab" onclick="switchTab('pdf')">📄 Importa PDF</button>
 </div>
-<?php endforeach; ?>
+
+<!-- CREA VIDEO -->
+<div id="createSection" class="section active">
+<div class="upload-box">
+<input id="title" placeholder="Titolo" type="text">
+<input id="artist" placeholder="Artista" type="text">
+<label>Cover (immagine)</label>
+<input type="file" id="coverFile" accept="image/*">
+<label>Audio (MP3, WAV, ecc.)</label>
+<input type="file" id="audioFile" accept="audio/*">
+<button id="createBtn" onclick="createVideo()">Crea Video</button>
+
+<div class="progress" id="progressBox">
+<div class="progress-bar">
+<div class="progress-fill" id="progressFill">0%</div>
+</div>
+<div class="status" id="status"></div>
+</div>
+</div>
+</div>
+
+<!-- IMPORT VIDEO -->
+<div id="importSection" class="section">
+<div class="upload-box">
+<input id="importTitle" placeholder="Titolo video" type="text">
+<input id="importArtist" placeholder="Artista" type="text">
+<div class="upload-area" id="uploadArea">🎬 Clicca o trascina video</div>
+<input type="file" id="importFile" accept="video/*" hidden>
+<button id="importBtn" disabled onclick="importVideo()">Aggiungi Video</button>
+</div>
+</div>
+
+<!-- IMPORT MP3 -->
+<div id="mp3Section" class="section">
+<div class="upload-box">
+<input id="mp3Title" placeholder="Titolo brano" type="text">
+<input id="mp3Artist" placeholder="Artista" type="text">
+<div class="upload-area" id="mp3UploadArea">🎵 Clicca o trascina MP3</div>
+<input type="file" id="mp3File" accept="audio/mpeg,audio/mp3,audio/*" hidden>
+<button id="mp3Btn" disabled onclick="importMP3()">Aggiungi MP3</button>
+</div>
+</div>
+
+<!-- IMPORT PDF -->
+<div id="pdfSection" class="section">
+<div class="upload-box">
+<input id="pdfTitle" placeholder="Titolo PDF" type="text">
+<input id="pdfDescription" placeholder="Descrizione (opzionale)" type="text">
+<div class="upload-area" id="pdfUploadArea">📄 Clicca o trascina PDF</div>
+<input type="file" id="pdfFile" accept="application/pdf" hidden>
+<button id="pdfBtn" disabled onclick="importPDF()">Aggiungi PDF</button>
+</div>
+</div>
+
+<!-- GALLERIA VIDEO -->
+<div class="gallery" id="gallery" style="display:none">
+<h2>🎞️ Video</h2>
+<div id="videoGrid" class="video-grid"></div>
+</div>
+
+<!-- GALLERIA MP3 -->
+<div class="gallery" id="mp3Gallery" style="display:none">
+<h2>🎵 Brani Audio</h2>
+<div id="mp3Grid" class="video-grid"></div>
+</div>
+
+<!-- GALLERIA PDF -->
+<div class="gallery" id="pdfGallery" style="display:none">
+<h2>📄 Documenti PDF</h2>
+<div id="pdfGrid" class="video-grid"></div>
+</div>
+
+<div class="empty" id="empty">Nessun contenuto</div>
+
+</div>
+
+<footer>© 2025 – My Music Studio</footer>
 
 <script>
-async function generateVideo(id) {
+let dbInstance = null;
+
+/* ---------------- IndexedDB ---------------- */
+function openDB(){
+if(dbInstance && !dbInstance.objectStoreNames.contains("mp3s")){
+// Se il database non ha mp3s, lo chiudiamo e ricreaiamo
+dbInstance.close()
+dbInstance = null
+}
+return new Promise((res,rej)=>{
+if(dbInstance){
+res(dbInstance)
+return
+}
+const r=indexedDB.open("VideoDB",4)
+r.onupgradeneeded=e=>{
+const db = e.target.result
+// Crea gli store se non esistono
+if(!db.objectStoreNames.contains("videos")){
+db.createObjectStore("videos",{keyPath:"id"})
+}
+if(!db.objectStoreNames.contains("pdfs")){
+db.createObjectStore("pdfs",{keyPath:"id"})
+}
+if(!db.objectStoreNames.contains("mp3s")){
+db.createObjectStore("mp3s",{keyPath:"id"})
+}
+}
+r.onsuccess=e=>{
+dbInstance = e.target.result
+res(dbInstance)
+}
+r.onerror=e=>rej(e.target.error)
+})
+}
+
+async function saveVideo(blob,title,artist){
+const db = await openDB()
+return new Promise((resolve, reject)=>{
+try{
+const tx=db.transaction("videos","readwrite")
+const store = tx.objectStore("videos")
+store.put({id:Date.now().toString(),blob,title,artist,date:Date.now(),type:'video'})
+tx.oncomplete=()=>resolve()
+tx.onerror=()=>reject(tx.error)
+}catch(e){
+reject(e)
+}
+})
+}
+
+async function savePDF(blob,title,description){
+const db = await openDB()
+return new Promise((resolve, reject)=>{
+try{
+const tx=db.transaction("pdfs","readwrite")
+const store = tx.objectStore("pdfs")
+store.put({id:Date.now().toString(),blob,title,description,date:Date.now(),type:'pdf'})
+tx.oncomplete=()=>resolve()
+tx.onerror=()=>reject(tx.error)
+}catch(e){
+reject(e)
+}
+})
+}
+
+async function saveMP3(blob,title,artist){
+try{
+const db = await openDB()
+// Verifica che l'object store esista
+if(!db.objectStoreNames.contains("mp3s")){
+throw new Error("Object store mp3s non trovato")
+}
+return new Promise((resolve, reject)=>{
+try{
+const tx=db.transaction("mp3s","readwrite")
+const store = tx.objectStore("mp3s")
+store.put({id:Date.now().toString(),blob,title,artist,date:Date.now(),type:'mp3'})
+tx.oncomplete=()=>resolve()
+tx.onerror=()=>reject(tx.error)
+}catch(e){
+reject(e)
+}
+})
+}catch(e){
+console.error("Errore saveMP3:", e)
+throw e
+}
+}
+
+async function getVideos(){
+const db = await openDB()
+return new Promise((resolve, reject)=>{
+try{
+if(!db.objectStoreNames.contains("videos")){
+resolve([])
+return
+}
+const tx=db.transaction("videos","readonly")
+const req = tx.objectStore("videos").getAll()
+req.onsuccess=e=>resolve(e.target.result || [])
+req.onerror=()=>reject(req.error)
+}catch(e){
+resolve([])
+}
+})
+}
+
+async function getPDFs(){
+const db = await openDB()
+return new Promise((resolve, reject)=>{
+try{
+if(!db.objectStoreNames.contains("pdfs")){
+resolve([])
+return
+}
+const tx=db.transaction("pdfs","readonly")
+const req = tx.objectStore("pdfs").getAll()
+req.onsuccess=e=>resolve(e.target.result || [])
+req.onerror=()=>reject(req.error)
+}catch(e){
+resolve([])
+}
+})
+}
+
+async function getMP3s(){
+const db = await openDB()
+return new Promise((resolve, reject)=>{
+try{
+if(!db.objectStoreNames.contains("mp3s")){
+resolve([])
+return
+}
+const tx=db.transaction("mp3s","readonly")
+const req = tx.objectStore("mp3s").getAll()
+req.onsuccess=e=>resolve(e.target.result || [])
+req.onerror=()=>reject(req.error)
+}catch(e){
+resolve([])
+}
+})
+}
+
+async function deleteVideo(id){
+if(!confirm("Eliminare?"))return
+const db = await openDB()
+return new Promise((resolve)=>{
+try{
+const tx=db.transaction("videos","readwrite")
+tx.objectStore("videos").delete(id)
+tx.oncomplete=()=>{
+loadGallery()
+resolve()
+}
+}catch(e){
+console.error(e)
+resolve()
+}
+})
+}
+
+async function deletePDF(id){
+if(!confirm("Eliminare questo PDF?"))return
+const db = await openDB()
+return new Promise((resolve)=>{
+try{
+const tx=db.transaction("pdfs","readwrite")
+tx.objectStore("pdfs").delete(id)
+tx.oncomplete=()=>{
+loadGallery()
+resolve()
+}
+}catch(e){
+console.error(e)
+resolve()
+}
+})
+}
+
+async function deleteMP3(id){
+if(!confirm("Eliminare questo MP3?"))return
+const db = await openDB()
+return new Promise((resolve)=>{
+try{
+const tx=db.transaction("mp3s","readwrite")
+tx.objectStore("mp3s").delete(id)
+tx.oncomplete=()=>{
+loadGallery()
+resolve()
+}
+}catch(e){
+console.error(e)
+resolve()
+}
+})
+}
+
+/* ---------------- UI ---------------- */
+function switchTab(t){
+document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'))
+document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'))
+if(t==='create'){
+document.querySelectorAll('.tab')[0].classList.add('active')
+document.getElementById('createSection').classList.add('active')
+}else if(t==='import'){
+document.querySelectorAll('.tab')[1].classList.add('active')
+document.getElementById('importSection').classList.add('active')
+}else if(t==='mp3'){
+document.querySelectorAll('.tab')[2].classList.add('active')
+document.getElementById('mp3Section').classList.add('active')
+}else{
+document.querySelectorAll('.tab')[3].classList.add('active')
+document.getElementById('pdfSection').classList.add('active')
+}
+}
+
+/* ---------------- CREATE VIDEO ---------------- */
+async function createVideo(){
+const title = document.getElementById('title').value.trim()
+const artist = document.getElementById('artist').value.trim()
+const coverFile = document.getElementById('coverFile').files[0]
+const audioFileObj = document.getElementById('audioFile').files[0]
+const createBtn = document.getElementById('createBtn')
+const progressBox = document.getElementById('progressBox')
+const progressFill = document.getElementById('progressFill')
+const status = document.getElementById('status')
+
+if(!title||!artist||!coverFile||!audioFileObj){
+alert("Compila tutti i campi e seleziona cover e audio")
+return
+}
+
 try {
-const canvas = document.createElement("canvas");
-canvas.width = 960; canvas.height = 540;
-const ctx = canvas.getContext("2d");
+createBtn.disabled = true
+progressBox.style.display = "block"
+status.textContent = "Caricamento cover..."
 
-const img = new Image();
-img.src = `uploads/covers/${id}.jpg`;
-await img.decode();
+const canvas = document.createElement("canvas")
+canvas.width = 1280
+canvas.height = 720
+const ctx = canvas.getContext("2d")
 
-const audio = new Audio(`uploads/mp3/${id}.mp3`);
-await audio.play().catch(()=>{}); // necessità autoplay click
+const img = new Image()
+const imgUrl = URL.createObjectURL(coverFile)
+img.src = imgUrl
+await new Promise((resolve, reject) => {
+img.onload = resolve
+img.onerror = reject
+})
 
-const stream = canvas.captureStream(30);
+function drawFrame() {
+ctx.fillStyle = "#000"
+ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-const source = audioCtx.createMediaElementSource(audio);
-const dest = audioCtx.createMediaStreamDestination();
+const scale = Math.min(canvas.width/img.width, canvas.height/img.height) * 0.7
+const x = (canvas.width - img.width * scale) / 2
+const y = (canvas.height - img.height * scale) / 2 - 40
+ctx.drawImage(img, x, y, img.width * scale, img.height * scale)
 
-source.connect(dest);
-source.connect(audioCtx.destination);
-stream.addTrack(dest.stream.getAudioTracks()[0]);
-
-const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
-let chunks = [];
-
-recorder.ondataavailable = e => chunks.push(e.data);
-
-recorder.onstop = () => {
-const blob = new Blob(chunks,{type:"video/webm"});
-const a = document.createElement("a");
-a.href = URL.createObjectURL(blob);
-a.download = `${id}-video.webm`;
-a.click();
-};
-
-function draw(){
-ctx.drawImage(img,0,0,canvas.width,canvas.height);
-requestAnimationFrame(draw);
+ctx.fillStyle = "#fff"
+ctx.font = "bold 48px Arial"
+ctx.textAlign = "center"
+ctx.shadowColor = "rgba(0,0,0,0.8)"
+ctx.shadowBlur = 10
+ctx.fillText(title, canvas.width/2, 650)
+ctx.font = "32px Arial"
+ctx.fillText(artist, canvas.width/2, 700)
+ctx.shadowBlur = 0
 }
 
-draw();
-recorder.start();
-audio.play();
-audio.onended = () => recorder.stop();
+drawFrame()
 
-} catch(err){
-alert("Errore generazione video: "+err.message);
-console.error(err);
+status.textContent = "Caricamento audio..."
+
+const audio = new Audio()
+const audioUrl = URL.createObjectURL(audioFileObj)
+audio.src = audioUrl
+audio.volume = 1.0
+
+await new Promise((resolve, reject) => {
+audio.addEventListener('loadedmetadata', resolve, {once: true})
+audio.addEventListener('error', reject, {once: true})
+})
+
+const duration = audio.duration
+
+status.textContent = "Creazione video in corso..."
+
+const stream = canvas.captureStream(30)
+const audioContext = new AudioContext()
+const source = audioContext.createMediaElementSource(audio)
+const destination = audioContext.createMediaStreamDestination()
+source.connect(destination)
+source.connect(audioContext.destination)
+
+const audioTrack = destination.stream.getAudioTracks()[0]
+stream.addTrack(audioTrack)
+
+const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
+  ? 'video/webm;codecs=vp9,opus' 
+  : 'video/webm'
+
+const recorder = new MediaRecorder(stream, {
+  mimeType,
+  videoBitsPerSecond: 2500000
+})
+const chunks = []
+
+recorder.ondataavailable = e => {
+if(e.data.size > 0) chunks.push(e.data)
 }
+
+recorder.onstop = async () => {
+const blob = new Blob(chunks, {type: 'video/webm'})
+status.textContent = "Salvataggio..."
+await saveVideo(blob, title, artist)
+status.textContent = "✅ Video creato con successo!"
+setTimeout(() => {
+progressBox.style.display = "none"
+progressFill.style.width = "0%"
+progressFill.textContent = "0%"
+createBtn.disabled = false
+document.getElementById('title').value = ""
+document.getElementById('artist').value = ""
+document.getElementById('coverFile').value = ""
+document.getElementById('audioFile').value = ""
+}, 2000)
+loadGallery()
+URL.revokeObjectURL(audioUrl)
+URL.revokeObjectURL(imgUrl)
+}
+
+const renderLoop = setInterval(() => {
+drawFrame()
+}, 33)
+
+recorder.start()
+audio.play()
+
+const updateProgress = () => {
+const progress = (audio.currentTime / duration * 100)
+progressFill.style.width = progress + "%"
+progressFill.textContent = Math.round(progress) + "%"
+}
+
+const progressInterval = setInterval(updateProgress, 500)
+
+audio.onended = () => {
+clearInterval(progressInterval)
+clearInterval(renderLoop)
+recorder.stop()
+audioContext.close()
+}
+
+} catch(error) {
+console.error("Errore:", error)
+alert("Errore nella creazione del video: " + error.message)
+createBtn.disabled = false
+progressBox.style.display = "none"
+}
+}
+
+/* ---------------- IMPORT VIDEO ---------------- */
+let selectedFile = null
+const uploadArea = document.getElementById('uploadArea')
+const importFile = document.getElementById('importFile')
+const importBtn = document.getElementById('importBtn')
+
+uploadArea.onclick = () => importFile.click()
+importFile.onchange = e => handleFile(e.target.files[0])
+uploadArea.ondragover = e => {
+e.preventDefault()
+uploadArea.classList.add("dragover")
+}
+uploadArea.ondragleave = () => uploadArea.classList.remove("dragover")
+uploadArea.ondrop = e => {
+e.preventDefault()
+uploadArea.classList.remove("dragover")
+handleFile(e.dataTransfer.files[0])
+}
+
+function handleFile(f){
+if(!f || !f.type.startsWith("video/")) {
+alert("Seleziona un file video valido")
+return
+}
+selectedFile = f
+uploadArea.innerHTML = "✅ " + f.name
+importBtn.disabled = false
+}
+
+async function importVideo(){
+if(!selectedFile) return
+
+const title = document.getElementById('importTitle').value.trim() || "Video"
+const artist = document.getElementById('importArtist').value.trim() || "Sconosciuto"
+
+importBtn.disabled = true
+importBtn.textContent = "Importazione..."
+
+try {
+const arrayBuffer = await selectedFile.arrayBuffer()
+const blob = new Blob([arrayBuffer], {type: selectedFile.type})
+await saveVideo(blob, title, artist)
+loadGallery()
+
+document.getElementById('importTitle').value = ""
+document.getElementById('importArtist').value = ""
+uploadArea.innerHTML = "🎬 Clicca o trascina video"
+selectedFile = null
+importBtn.textContent = "Aggiungi Video"
+importBtn.disabled = true
+} catch(error) {
+console.error("Errore importazione:", error)
+alert("Errore nell'importazione: " + error.message)
+importBtn.disabled = false
+importBtn.textContent = "Aggiungi Video"
+}
+}
+
+/* ---------------- IMPORT MP3 ---------------- */
+let selectedMP3 = null
+const mp3UploadArea = document.getElementById('mp3UploadArea')
+const mp3FileInput = document.getElementById('mp3File')
+const mp3Btn = document.getElementById('mp3Btn')
+
+mp3UploadArea.onclick = () => mp3FileInput.click()
+mp3FileInput.onchange = e => handleMP3File(e.target.files[0])
+mp3UploadArea.ondragover = e => {
+e.preventDefault()
+mp3UploadArea.classList.add("dragover")
+}
+mp3UploadArea.ondragleave = () => mp3UploadArea.classList.remove("dragover")
+mp3UploadArea.ondrop = e => {
+e.preventDefault()
+mp3UploadArea.classList.remove("dragover")
+handleMP3File(e.dataTransfer.files[0])
+}
+
+function handleMP3File(f){
+if(!f || !f.type.startsWith("audio/")) {
+alert("Seleziona un file audio valido (MP3, WAV, ecc.)")
+return
+}
+selectedMP3 = f
+mp3UploadArea.innerHTML = "✅ " + f.name
+mp3Btn.disabled = false
+}
+
+async function importMP3(){
+if(!selectedMP3) return
+
+const title = document.getElementById('mp3Title').value.trim() || selectedMP3.name.replace(/\.[^/.]+$/, '')
+const artist = document.getElementById('mp3Artist').value.trim() || "Artista sconosciuto"
+
+mp3Btn.disabled = true
+mp3Btn.textContent = "Importazione..."
+
+try {
+const arrayBuffer = await selectedMP3.arrayBuffer()
+const blob = new Blob([arrayBuffer], {type: selectedMP3.type || 'audio/mpeg'})
+await saveMP3(blob, title, artist)
+loadGallery()
+
+document.getElementById('mp3Title').value = ""
+document.getElementById('mp3Artist').value = ""
+mp3UploadArea.innerHTML = "🎵 Clicca o trascina MP3"
+selectedMP3 = null
+mp3Btn.textContent = "Aggiungi MP3"
+mp3Btn.disabled = true
+} catch(error) {
+console.error("Errore importazione MP3:", error)
+alert("Errore nell'importazione MP3: " + error.message)
+mp3Btn.disabled = false
+mp3Btn.textContent = "Aggiungi MP3"
+}
+}
+
+/* ---------------- IMPORT PDF ---------------- */
+let selectedPDF = null
+const pdfUploadArea = document.getElementById('pdfUploadArea')
+const pdfFileInput = document.getElementById('pdfFile')
+const pdfBtn = document.getElementById('pdfBtn')
+
+pdfUploadArea.onclick = () => pdfFileInput.click()
+pdfFileInput.onchange = e => handlePDFFile(e.target.files[0])
+pdfUploadArea.ondragover = e => {
+e.preventDefault()
+pdfUploadArea.classList.add("dragover")
+}
+pdfUploadArea.ondragleave = () => pdfUploadArea.classList.remove("dragover")
+pdfUploadArea.ondrop = e => {
+e.preventDefault()
+pdfUploadArea.classList.remove("dragover")
+handlePDFFile(e.dataTransfer.files[0])
+}
+
+function handlePDFFile(f){
+if(!f || f.type !== "application/pdf") {
+alert("Seleziona un file PDF valido")
+return
+}
+selectedPDF = f
+pdfUploadArea.innerHTML = "✅ " + f.name
+pdfBtn.disabled = false
+}
+
+async function importPDF(){
+if(!selectedPDF) return
+
+const title = document.getElementById('pdfTitle').value.trim() || selectedPDF.name
+const description = document.getElementById('pdfDescription').value.trim() || ""
+
+pdfBtn.disabled = true
+pdfBtn.textContent = "Importazione..."
+
+try {
+const arrayBuffer = await selectedPDF.arrayBuffer()
+const blob = new Blob([arrayBuffer], {type: 'application/pdf'})
+await savePDF(blob, title, description)
+loadGallery()
+
+document.getElementById('pdfTitle').value = ""
+document.getElementById('pdfDescription').value = ""
+pdfUploadArea.innerHTML = "📄 Clicca o trascina PDF"
+selectedPDF = null
+pdfBtn.textContent = "Aggiungi PDF"
+pdfBtn.disabled = true
+} catch(error) {
+console.error("Errore importazione PDF:", error)
+alert("Errore nell'importazione PDF: " + error.message)
+pdfBtn.disabled = false
+pdfBtn.textContent = "Aggiungi PDF"
+}
+}
+
+function viewPDF(id){
+getPDFs().then(pdfs => {
+const pdf = pdfs.find(p => p.id === id)
+if(pdf){
+const url = URL.createObjectURL(pdf.blob)
+window.open(url, '_blank')
+}
+})
+}
+
+let currentAudio = null
+
+function playMP3(id){
+getMP3s().then(mp3s => {
+const mp3 = mp3s.find(m => m.id === id)
+if(mp3){
+if(currentAudio){
+currentAudio.pause()
+currentAudio = null
+}
+const url = URL.createObjectURL(mp3.blob)
+currentAudio = new Audio(url)
+currentAudio.play()
+}
+})
+}
+
+/* ---------------- GALLERY ---------------- */
+async function loadGallery(){
+try {
+const vids = await getVideos()
+const pdfs = await getPDFs()
+const mp3s = await getMP3s()
+const videoGrid = document.getElementById('videoGrid')
+const pdfGrid = document.getElementById('pdfGrid')
+const mp3Grid = document.getElementById('mp3Grid')
+const gallery = document.getElementById('gallery')
+const pdfGallery = document.getElementById('pdfGallery')
+const mp3Gallery = document.getElementById('mp3Gallery')
+const empty = document.getElementById('empty')
+
+videoGrid.innerHTML = ""
+pdfGrid.innerHTML = ""
+mp3Grid.innerHTML = ""
+
+const hasVideos = vids && vids.length > 0
+const hasPDFs = pdfs && pdfs.length > 0
+const hasMP3s = mp3s && mp3s.length > 0
+
+if(!hasVideos && !hasPDFs && !hasMP3s){
+gallery.style.display = "none"
+pdfGallery.style.display = "none"
+mp3Gallery.style.display = "none"
+empty.style.display = "block"
+return
+}
+
+empty.style.display = "none"
+
+// Load videos
+if(hasVideos){
+vids.sort((a,b) => b.date - a.date).forEach(v => {
+const url = URL.createObjectURL(v.blob)
+const card = document.createElement('div')
+card.className = 'video-card'
+card.innerHTML = `
+<video src="${url}" controls preload="metadata"></video>
+<div class="video-info"><b>${v.title || 'Video'}</b><br>${v.artist || ''}</div>
+<div class="video-actions">
+<a class="download-btn" href="${url}" download="${v.title || 'video'}.webm">Scarica</a>
+<button class="delete-btn" onclick="deleteVideo('${v.id}')">Elimina</button>
+</div>`
+videoGrid.appendChild(card)
+})
+gallery.style.display = "block"
+}else{
+gallery.style.display = "none"
+}
+
+// Load MP3s
+if(hasMP3s){
+mp3s.sort((a,b) => b.date - a.date).forEach(m => {
+const url = URL.createObjectURL(m.blob)
+const card = document.createElement('div')
+card.className = 'video-card pdf-card'
+card.innerHTML = `
+<div class="mp3-icon">🎵</div>
+<div class="video-info">
+<b>${m.title || 'Audio'}</b><br>
+<small style="color:#999">${m.artist || 'Artista sconosciuto'}</small>
+</div>
+<div class="video-actions">
+<button class="play-btn" onclick="playMP3('${m.id}')">Ascolta</button>
+<a class="download-btn" href="${url}" download="${m.title || 'audio'}.mp3">Scarica</a>
+<button class="delete-btn" onclick="deleteMP3('${m.id}')">Elimina</button>
+</div>`
+mp3Grid.appendChild(card)
+})
+mp3Gallery.style.display = "block"
+}else{
+mp3Gallery.style.display = "none"
+}
+
+// Load PDFs
+if(hasPDFs){
+pdfs.sort((a,b) => b.date - a.date).forEach(p => {
+const url = URL.createObjectURL(p.blob)
+const card = document.createElement('div')
+card.className = 'video-card pdf-card'
+card.innerHTML = `
+<div class="pdf-icon">📄</div>
+<div class="video-info">
+<b>${p.title || 'PDF'}</b><br>
+<small style="color:#999">${p.description || 'Nessuna descrizione'}</small>
+</div>
+<div class="video-actions">
+<button class="view-btn" onclick="viewPDF('${p.id}')">Visualizza</button>
+<a class="download-btn" href="${url}" download="${p.title || 'documento'}.pdf">Scarica</a>
+<button class="delete-btn" onclick="deletePDF('${p.id}')">Elimina</button>
+</div>`
+pdfGrid.appendChild(card)
+})
+pdfGallery.style.display = "block"
+}else{
+pdfGallery.style.display = "none"
+}
+
+} catch(error) {
+console.error("Errore caricamento galleria:", error)
+}
+}
+
+window.onload = ()=>{
+openDB().then(()=>{
+loadGallery()
+}).catch(err=>{
+console.error("Errore apertura DB:", err)
+})
 }
 </script>
 
 </body>
 </html>
+
 
