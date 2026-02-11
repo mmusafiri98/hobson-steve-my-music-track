@@ -1,151 +1,155 @@
 <?php
 /* ================= CONFIG ================= */
-$dataFile = "data.json";
-$uploadDir = "uploads";
-$videoDir = "$uploadDir/videos";
-$coverDir = "$uploadDir/covers";
-$textDir  = "$uploadDir/transcriptions";
-
-foreach([$uploadDir,$videoDir,$coverDir,$textDir] as $d)
-    if(!is_dir($d)) mkdir($d,0777,true);
-
-$data = file_exists($dataFile) ? json_decode(file_get_contents($dataFile),true) : [];
-
-/* ================= UPLOAD VIDEO ================= */
-if($_SERVER["REQUEST_METHOD"]==="POST" && isset($_FILES["video"])){
-
-    $id = time();
-    $title = $_POST["title"];
-    $artist = $_POST["artist"];
-
-    $videoName = "$id.webm";
-    $coverName = "$id.jpg";
-
-    move_uploaded_file($_FILES["video"]["tmp_name"], "$videoDir/$videoName");
-    move_uploaded_file($_FILES["cover"]["tmp_name"], "$coverDir/$coverName");
-
-    $data[$id] = [
-        "title"=>$title,
-        "artist"=>$artist,
-        "video"=>$videoName,
-        "cover"=>$coverName
-    ];
-
-    file_put_contents($dataFile, json_encode($data,JSON_PRETTY_PRINT));
-    exit("OK");
+$base = __DIR__."/uploads";
+$dirs = ["covers","mp3","meta","subs","videos"];
+foreach($dirs as $d){
+    if(!is_dir("$base/$d")) mkdir("$base/$d",0777,true);
 }
+
+/* ================= AI TRASCRIZIONE SIMULATA ================= */
+function ai_transcribe($audio){
+    return "Questa è una trascrizione AI simulata del testo della canzone.";
+}
+
+/* ================= CREA SOTTOTITOLI ================= */
+function make_vtt($text,$path){
+    $vtt="WEBVTT\n\n";
+    $t=0;
+    foreach(explode(".", $text) as $line){
+        if(trim($line)){
+            $start=gmdate("H:i:s",$t).".000";
+            $t+=4;
+            $end=gmdate("H:i:s",$t).".000";
+            $vtt.="$start --> $end\n$line\n\n";
+        }
+    }
+    file_put_contents($path,$vtt);
+}
+
+/* ================= UPLOAD ================= */
+if($_SERVER["REQUEST_METHOD"]==="POST"){
+    $id=time();
+    $title=$_POST["title"];
+    $artist=$_POST["artist"];
+
+    move_uploaded_file($_FILES["cover"]["tmp_name"],"$base/covers/$id.jpg");
+    move_uploaded_file($_FILES["audio"]["tmp_name"],"$base/mp3/$id.mp3");
+
+    $text=ai_transcribe("$base/mp3/$id.mp3");
+    make_vtt($text,"$base/subs/$id.vtt");
+
+    file_put_contents("$base/meta/$id.json",json_encode([
+        "title"=>$title,
+        "artist"=>$artist
+    ]));
+
+    header("Location: index.php");
+    exit;
+}
+
+/* ================= LEGGI DATI ================= */
+$items = glob("$base/meta/*.json");
 ?>
 <!DOCTYPE html>
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<title>Music Video AI Studio</title>
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>My Music Studio AI</title>
 <style>
-body{background:#111;color:#fff;font-family:Arial;margin:0}
-header{padding:20px;text-align:center;background:#d6004c}
-.container{max-width:900px;margin:auto;padding:20px}
-input,button{width:100%;padding:12px;margin-bottom:10px}
-button{background:#7b1fa2;color:#fff;border:none}
-.card{background:#1e1e1e;padding:15px;border-radius:10px;margin-bottom:20px}
-video{width:100%;border-radius:10px}
+body{background:#111;color:#fff;font-family:Arial;margin:0;padding:20px}
+.card{background:#1e1e1e;padding:20px;border-radius:12px;margin-bottom:20px}
+video,img,audio{width:100%;border-radius:10px;margin-bottom:10px}
+button{padding:10px 15px;border:none;border-radius:8px;background:#d6004c;color:#fff;cursor:pointer;margin-bottom:10px}
 </style>
 </head>
 <body>
 
-<header>
-<h1>🎬 Music Video AI Studio</h1>
-<p>Cover + Audio → Video WEBM</p>
-</header>
+<h1>🎶 My Music Studio AI</h1>
 
-<div class="container">
-
-<div class="card">
-<input id="title" placeholder="Titolo canzone">
-<input id="artist" placeholder="Artista">
+<form method="post" enctype="multipart/form-data" style="margin-bottom:30px">
+<input name="title" placeholder="Titolo" required><br>
+<input name="artist" placeholder="Artista" required><br>
 <label>Cover</label>
-<input type="file" id="cover" accept="image/*">
+<input type="file" name="cover" accept="image/*" required><br>
 <label>Audio</label>
-<input type="file" id="audio" accept="audio/*">
-<button onclick="createVideo()">🎬 Genera Video</button>
-</div>
+<input type="file" name="audio" accept="audio/*" required><br>
+<button>Upload + Trascrizione AI</button>
+</form>
 
-<?php foreach($data as $v): ?>
+<hr>
+
+<?php foreach($items as $m):
+$id=basename($m,".json");
+$meta=json_decode(file_get_contents($m),true);
+?>
 <div class="card">
-<h3><?= htmlspecialchars($v["title"]) ?></h3>
-<p><?= htmlspecialchars($v["artist"]) ?></p>
-<video controls>
-<source src="uploads/videos/<?= $v["video"] ?>" type="video/webm">
+<h3><?=htmlspecialchars($meta["title"])?> — <?=htmlspecialchars($meta["artist"])?></h3>
+
+<!-- VIDEO GENERATO IN BROWSER -->
+<video id="video_<?=$id?>" controls>
+<source src="<?= "uploads/videos/$id.webm" ?>">
+<track src="<?= "uploads/subs/$id.vtt" ?>" kind="subtitles" srclang="it" label="Italiano" default>
 </video>
+
+<img src="<?= "uploads/covers/$id.jpg" ?>">
+
+<audio src="<?= "uploads/mp3/$id.mp3" ?>" controls></audio>
+
+<!-- BOTTONE GENERA VIDEO -->
+<button onclick="generateVideo('<?=$id?>')">🎬 Generate Video</button>
 </div>
 <?php endforeach; ?>
 
-</div>
-
 <script>
-async function createVideo(){
+async function generateVideo(id) {
+try {
+const canvas = document.createElement("canvas");
+canvas.width = 960; canvas.height = 540;
+const ctx = canvas.getContext("2d");
 
-const title=titleInput=title.value
-const artistVal=artist.value
-const coverFile=cover.files[0]
-const audioFile=audio.files[0]
+const img = new Image();
+img.src = `uploads/covers/${id}.jpg`;
+await img.decode();
 
-if(!title||!artistVal||!coverFile||!audioFile)
-return alert("Completa tutti i campi")
+const audio = new Audio(`uploads/mp3/${id}.mp3`);
+await audio.play().catch(()=>{}); // necessità autoplay click
 
-const canvas=document.createElement("canvas")
-canvas.width=1280
-canvas.height=720
-const ctx=canvas.getContext("2d")
+const stream = canvas.captureStream(30);
 
-const img=new Image()
-img.src=URL.createObjectURL(coverFile)
-await img.decode()
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const source = audioCtx.createMediaElementSource(audio);
+const dest = audioCtx.createMediaStreamDestination();
 
-const audioEl=new Audio(URL.createObjectURL(audioFile))
-const stream=canvas.captureStream(30)
+source.connect(dest);
+source.connect(audioCtx.destination);
+stream.addTrack(dest.stream.getAudioTracks()[0]);
 
-const ac=new AudioContext()
-const src=ac.createMediaElementSource(audioEl)
-const dest=ac.createMediaStreamDestination()
-src.connect(dest)
-src.connect(ac.destination)
-stream.addTrack(dest.stream.getAudioTracks()[0])
+const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+let chunks = [];
 
-const rec=new MediaRecorder(stream,{mimeType:"video/webm"})
-let chunks=[]
+recorder.ondataavailable = e => chunks.push(e.data);
 
-rec.ondataavailable=e=>chunks.push(e.data)
-rec.onstop=async()=>{
-const videoBlob=new Blob(chunks,{type:"video/webm"})
-const fd=new FormData()
-fd.append("video",videoBlob)
-fd.append("cover",coverFile)
-fd.append("title",titleInput)
-fd.append("artist",artistVal)
-
-await fetch("",{method:"POST",body:fd})
-location.reload()
-}
+recorder.onstop = () => {
+const blob = new Blob(chunks,{type:"video/webm"});
+const a = document.createElement("a");
+a.href = URL.createObjectURL(blob);
+a.download = `${id}-video.webm`;
+a.click();
+};
 
 function draw(){
-ctx.drawImage(img,0,0,canvas.width,canvas.height)
-ctx.fillStyle="rgba(0,0,0,0.5)"
-ctx.fillRect(0,560,1280,160)
-ctx.fillStyle="#fff"
-ctx.font="48px Arial"
-ctx.textAlign="center"
-ctx.fillText(titleInput,640,620)
-ctx.font="32px Arial"
-ctx.fillText(artistVal,640,670)
+ctx.drawImage(img,0,0,canvas.width,canvas.height);
+requestAnimationFrame(draw);
 }
 
-const loop=setInterval(draw,1000/30)
-rec.start()
-audioEl.play()
-audioEl.onended=()=>{
-clearInterval(loop)
-rec.stop()
+draw();
+recorder.start();
+audio.play();
+audio.onended = () => recorder.stop();
+
+} catch(err){
+alert("Errore generazione video: "+err.message);
+console.error(err);
 }
 }
 </script>
