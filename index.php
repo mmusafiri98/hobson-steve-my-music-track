@@ -1,171 +1,155 @@
 <?php
 /* ================= CONFIG ================= */
-$baseDir = __DIR__ . "/uploads";
-$dirs = [
-    "video" => "$baseDir/videos",
-    "mp3"   => "$baseDir/mp3",
-    "pdf"   => "$baseDir/pdf",
-    "text"  => "$baseDir/transcriptions"
-];
+$dataFile = "data.json";
+$uploadDir = "uploads";
+$videoDir = "$uploadDir/videos";
+$coverDir = "$uploadDir/covers";
+$textDir  = "$uploadDir/transcriptions";
 
-foreach ($dirs as $d) {
-    if (!is_dir($d)) mkdir($d, 0777, true);
-}
+foreach([$uploadDir,$videoDir,$coverDir,$textDir] as $d)
+    if(!is_dir($d)) mkdir($d,0777,true);
 
-/* ================= SUPERDATA AI API FUNCTION ================= */
-/* Qui puoi collegare una vera API esterna */
-function superdata_ai_transcribe($filePath) {
+$data = file_exists($dataFile) ? json_decode(file_get_contents($dataFile),true) : [];
 
-    $apiKey = "sd_2e33ada3c7fabb785c23cc14fe8420a7";
-    $endpoint = "https://api.superdata.ai/v1/transcribe";
+/* ================= UPLOAD VIDEO ================= */
+if($_SERVER["REQUEST_METHOD"]==="POST" && isset($_FILES["video"])){
 
-    // ESEMPIO chiamata API reale (commentata)
-    /*
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $endpoint);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        "Authorization: Bearer $apiKey"
-    ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, [
-        "file" => new CURLFile($filePath)
-    ]);
-    $response = curl_exec($ch);
-    curl_close($ch);
+    $id = time();
+    $title = $_POST["title"];
+    $artist = $_POST["artist"];
 
-    $data = json_decode($response, true);
-    return $data["text"];
-    */
+    $videoName = "$id.webm";
+    $coverName = "$id.jpg";
 
-    // VERSIONE DEMO LOCALE (simulazione AI)
-    return "Trascrizione AI simulata:\n\nQuesto è un esempio di testo generato automaticamente dall'intelligenza artificiale analizzando l'audio caricato.";
-}
+    move_uploaded_file($_FILES["video"]["tmp_name"], "$videoDir/$videoName");
+    move_uploaded_file($_FILES["cover"]["tmp_name"], "$coverDir/$coverName");
 
-/* ================= UPLOAD ================= */
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_FILES["file"])) {
+    $data[$id] = [
+        "title"=>$title,
+        "artist"=>$artist,
+        "video"=>$videoName,
+        "cover"=>$coverName
+    ];
 
-    $type = $_POST["type"];
-    if (!isset($dirs[$type])) exit;
-
-    $name = time() . "_" . basename($_FILES["file"]["name"]);
-    $targetPath = $dirs[$type] . "/" . $name;
-
-    move_uploaded_file($_FILES["file"]["tmp_name"], $targetPath);
-
-    // Se è un MP3 → trascrizione automatica
-    if ($type === "mp3") {
-        $text = superdata_ai_transcribe($targetPath);
-        file_put_contents($dirs["text"] . "/" . $name . ".txt", $text);
-    }
-
-    header("Location: index.php");
-    exit;
-}
-
-/* ================= DELETE ================= */
-if (isset($_GET["delete"])) {
-    $file = realpath($_GET["delete"]);
-    if ($file && str_starts_with($file, realpath($baseDir))) {
-        unlink($file);
-    }
-    header("Location: index.php");
-    exit;
-}
-
-/* ================= READ FILES ================= */
-function listFiles($dir) {
-    return array_values(array_filter(glob($dir . "/*"), "is_file"));
+    file_put_contents($dataFile, json_encode($data,JSON_PRETTY_PRINT));
+    exit("OK");
 }
 ?>
 <!DOCTYPE html>
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<title>My Music Studio AI</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Music Video AI Studio</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
 <style>
-*{box-sizing:border-box;font-family:Arial}
-body{margin:0;background:#111;color:#fff}
-header{padding:30px;text-align:center;background:linear-gradient(135deg,#d6004c,#7b1fa2)}
-.container{max-width:1100px;margin:auto;padding:30px}
-.upload{background:#1e1e1e;padding:20px;border-radius:12px;margin-bottom:30px}
-input,select,button{width:100%;padding:12px;margin-bottom:10px;border:none;border-radius:8px}
-button{background:#d6004c;color:#fff;cursor:pointer}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:15px}
-.card{background:#1e1e1e;border-radius:12px;padding:15px}
-a{color:#ff5c8a;text-decoration:none}
-.transcription{background:#000;padding:10px;border-radius:8px;margin-top:10px;font-size:14px;white-space:pre-wrap}
+body{background:#111;color:#fff;font-family:Arial;margin:0}
+header{padding:20px;text-align:center;background:#d6004c}
+.container{max-width:900px;margin:auto;padding:20px}
+input,button{width:100%;padding:12px;margin-bottom:10px}
+button{background:#7b1fa2;color:#fff;border:none}
+.card{background:#1e1e1e;padding:15px;border-radius:10px;margin-bottom:20px}
+video{width:100%;border-radius:10px}
 </style>
 </head>
-
 <body>
 
 <header>
-<h1>🎶 My Music Studio + SuperData AI</h1>
-<p>Upload + Trascrizione Automatica AI</p>
+<h1>🎬 Music Video AI Studio</h1>
+<p>Cover + Audio → Video WEBM</p>
 </header>
 
 <div class="container">
 
-<div class="upload">
-<form method="post" enctype="multipart/form-data">
-<select name="type">
-<option value="video">🎬 Video</option>
-<option value="mp3">🎵 MP3 (con trascrizione AI)</option>
-<option value="pdf">📄 PDF</option>
-</select>
-<input type="file" name="file" required>
-<button>Upload</button>
-</form>
+<div class="card">
+<input id="title" placeholder="Titolo canzone">
+<input id="artist" placeholder="Artista">
+<label>Cover</label>
+<input type="file" id="cover" accept="image/*">
+<label>Audio</label>
+<input type="file" id="audio" accept="audio/*">
+<button onclick="createVideo()">🎬 Genera Video</button>
 </div>
 
-<!-- VIDEO -->
-<h2>🎬 Video</h2>
-<div class="grid">
-<?php foreach(listFiles($dirs["video"]) as $f): ?>
+<?php foreach($data as $v): ?>
 <div class="card">
-<video src="<?= "uploads/videos/".basename($f) ?>" controls width="100%"></video>
-<a href="?delete=<?= $f ?>">🗑 Elimina</a>
+<h3><?= htmlspecialchars($v["title"]) ?></h3>
+<p><?= htmlspecialchars($v["artist"]) ?></p>
+<video controls>
+<source src="uploads/videos/<?= $v["video"] ?>" type="video/webm">
+</video>
 </div>
 <?php endforeach; ?>
-</div>
-
-<!-- MP3 + TRASCRIZIONE -->
-<h2>🎵 MP3 + Trascrizione AI</h2>
-<div class="grid">
-<?php foreach(listFiles($dirs["mp3"]) as $f): ?>
-<div class="card">
-<p><b><?= basename($f) ?></b></p>
-<audio src="<?= "uploads/mp3/".basename($f) ?>" controls></audio>
-
-<?php
-$txtFile = $dirs["text"] . "/" . basename($f) . ".txt";
-if (file_exists($txtFile)):
-?>
-<div class="transcription">
-<?= htmlspecialchars(file_get_contents($txtFile)) ?>
-</div>
-<?php endif; ?>
-
-<a href="?delete=<?= $f ?>">🗑 Elimina</a>
-</div>
-<?php endforeach; ?>
-</div>
-
-<!-- PDF -->
-<h2>📄 PDF</h2>
-<div class="grid">
-<?php foreach(listFiles($dirs["pdf"]) as $f): ?>
-<div class="card">
-<p><?= basename($f) ?></p>
-<a href="<?= "uploads/pdf/".basename($f) ?>" target="_blank">Apri</a><br>
-<a href="?delete=<?= $f ?>">🗑 Elimina</a>
-</div>
-<?php endforeach; ?>
-</div>
 
 </div>
+
+<script>
+async function createVideo(){
+
+const title=titleInput=title.value
+const artistVal=artist.value
+const coverFile=cover.files[0]
+const audioFile=audio.files[0]
+
+if(!title||!artistVal||!coverFile||!audioFile)
+return alert("Completa tutti i campi")
+
+const canvas=document.createElement("canvas")
+canvas.width=1280
+canvas.height=720
+const ctx=canvas.getContext("2d")
+
+const img=new Image()
+img.src=URL.createObjectURL(coverFile)
+await img.decode()
+
+const audioEl=new Audio(URL.createObjectURL(audioFile))
+const stream=canvas.captureStream(30)
+
+const ac=new AudioContext()
+const src=ac.createMediaElementSource(audioEl)
+const dest=ac.createMediaStreamDestination()
+src.connect(dest)
+src.connect(ac.destination)
+stream.addTrack(dest.stream.getAudioTracks()[0])
+
+const rec=new MediaRecorder(stream,{mimeType:"video/webm"})
+let chunks=[]
+
+rec.ondataavailable=e=>chunks.push(e.data)
+rec.onstop=async()=>{
+const videoBlob=new Blob(chunks,{type:"video/webm"})
+const fd=new FormData()
+fd.append("video",videoBlob)
+fd.append("cover",coverFile)
+fd.append("title",titleInput)
+fd.append("artist",artistVal)
+
+await fetch("",{method:"POST",body:fd})
+location.reload()
+}
+
+function draw(){
+ctx.drawImage(img,0,0,canvas.width,canvas.height)
+ctx.fillStyle="rgba(0,0,0,0.5)"
+ctx.fillRect(0,560,1280,160)
+ctx.fillStyle="#fff"
+ctx.font="48px Arial"
+ctx.textAlign="center"
+ctx.fillText(titleInput,640,620)
+ctx.font="32px Arial"
+ctx.fillText(artistVal,640,670)
+}
+
+const loop=setInterval(draw,1000/30)
+rec.start()
+audioEl.play()
+audioEl.onended=()=>{
+clearInterval(loop)
+rec.stop()
+}
+}
+</script>
+
 </body>
 </html>
 
