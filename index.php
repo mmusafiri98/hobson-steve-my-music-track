@@ -33,7 +33,7 @@ button:disabled { background:#555; cursor:not-allowed; }
 
 <header>
 <h1>🎶 My Music Studio</h1>
-<p>Crea e gestisci video localmente</p>
+<p>Crea video da cover + audio</p>
 </header>
 
 <div class="container">
@@ -41,7 +41,7 @@ button:disabled { background:#555; cursor:not-allowed; }
 <div class="upload-box">
 <input id="title" placeholder="Titolo">
 <input id="artist" placeholder="Artista">
-<label>Cover (immagine)</label>
+<label>Cover</label>
 <input type="file" id="coverFile" accept="image/*">
 <label>Audio (MP3, WAV)</label>
 <input type="file" id="audioFile" accept="audio/*">
@@ -66,17 +66,17 @@ button:disabled { background:#555; cursor:not-allowed; }
 <script>
 let db;
 
-function openDB(){
+async function openDB(){
     return new Promise((resolve,reject)=>{
-        const req=indexedDB.open("VideoDB",1);
-        req.onupgradeneeded=e=>{
+        const request=indexedDB.open("VideoDB",1);
+        request.onupgradeneeded=e=>{
             db=e.target.result;
             if(!db.objectStoreNames.contains("videos")){
                 db.createObjectStore("videos",{keyPath:"id"});
             }
         };
-        req.onsuccess=e=>{db=e.target.result; resolve();};
-        req.onerror=e=>reject(e.target.error);
+        request.onsuccess=e=>{db=e.target.result; resolve();};
+        request.onerror=e=>reject(e.target.error);
     });
 }
 
@@ -126,14 +126,13 @@ async function loadGallery(){
     });
 }
 
-/* ------------------- CREAZIONE VIDEO ------------------- */
+/* Creazione video */
 document.getElementById("createBtn").addEventListener("click", async ()=>{
     const title=document.getElementById("title").value.trim();
     const artist=document.getElementById("artist").value.trim();
     const coverFile=document.getElementById("coverFile").files[0];
     const audioFile=document.getElementById("audioFile").files[0];
     if(!title||!artist||!coverFile||!audioFile){alert("Compila tutti i campi"); return;}
-
     const btn=document.getElementById("createBtn");
     const progressBox=document.getElementById("progressBox");
     const progressFill=document.getElementById("progressFill");
@@ -144,24 +143,12 @@ document.getElementById("createBtn").addEventListener("click", async ()=>{
         const canvas=document.createElement("canvas");
         canvas.width=1280; canvas.height=720;
         const ctx=canvas.getContext("2d");
-
         const img=new Image();
         img.src=URL.createObjectURL(coverFile);
-        await new Promise((res,rej)=>{img.onload=res; img.onerror=rej;});
-
-        function draw(){
-            ctx.fillStyle="#000"; ctx.fillRect(0,0,1280,720);
-            const scale=Math.min(1280/img.width,720/img.height)*0.7;
-            const x=(1280-img.width*scale)/2;
-            const y=(720-img.height*scale)/2-40;
-            ctx.drawImage(img,x,y,img.width*scale,img.height*scale);
-            ctx.fillStyle="#fff"; ctx.textAlign="center";
-            ctx.font="bold 48px Arial"; ctx.fillText(title,640,650);
-            ctx.font="32px Arial"; ctx.fillText(artist,640,700);
-        }
+        await new Promise(res=>img.onload=res);
 
         const audio=new Audio(URL.createObjectURL(audioFile));
-        await new Promise((res,rej)=>{audio.onloadedmetadata=res; audio.onerror=rej;});
+        await new Promise(res=>audio.onloadedmetadata=res);
         const duration=audio.duration;
 
         const stream=canvas.captureStream(30);
@@ -188,19 +175,33 @@ document.getElementById("createBtn").addEventListener("click", async ()=>{
             loadGallery();
         };
 
-        recorder.start(); audio.play();
-        const drawLoop=setInterval(draw,33);
+        recorder.start();
+        audio.play();
+
+        const drawLoop=setInterval(()=>{
+            ctx.fillStyle="#000"; ctx.fillRect(0,0,1280,720);
+            const scale=Math.min(1280/img.width,720/img.height)*0.7;
+            const x=(1280-img.width*scale)/2;
+            const y=(720-img.height*scale)/2-40;
+            ctx.drawImage(img,x,y,img.width*scale,img.height*scale);
+            ctx.fillStyle="#fff"; ctx.textAlign="center";
+            ctx.font="bold 48px Arial"; ctx.fillText(title,640,650);
+            ctx.font="32px Arial"; ctx.fillText(artist,640,700);
+        },33);
+
         const progLoop=setInterval(()=>{
             let p=(audio.currentTime/duration)*100; if(p>100)p=100;
             progressFill.style.width=p+"%"; progressFill.innerText=Math.floor(p)+"%";
         },200);
 
         audio.onended=()=>{
-            clearInterval(drawLoop); clearInterval(progLoop);
+            clearInterval(drawLoop);
+            clearInterval(progLoop);
             recorder.requestData();
             setTimeout(()=>recorder.stop(),200);
             audioCtx.close();
         };
+
     }catch(e){alert("Errore: "+e.message); btn.disabled=false; progressBox.style.display="none";}
 });
 
