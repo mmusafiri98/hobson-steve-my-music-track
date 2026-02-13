@@ -6,7 +6,7 @@
 // ═══════════════════════════════════════════════════════════
 
 // ⚠️  METS TA NOUVELLE CLÉ ICI (l'ancienne est compromise)
-define('OPENAI_API_KEY', 'METS_TA_CLE_ICI');
+define('OPENAI_API_KEY', 'NK0o4vnKFgYq8hqKIu3SU6BbTM2N5uKO_4xKV931qgk');
 
 // ── Requête AJAX : transcription Whisper ──────────────────
 // Le JS envoie POST avec ?action=whisper
