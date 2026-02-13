@@ -466,27 +466,89 @@ function clipTxt(ctx,txt,maxW){
   return txt+'…';
 }
 function drawFrame(ctx,img,title,artist,sub){
-  const W=1280,H=720;
-  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
-  const sc=Math.min(W/img.width,H/img.height)*0.65;
-  const iw=img.width*sc,ih=img.height*sc;
-  ctx.drawImage(img,(W-iw)/2,(H-ih)/2+(sub?-65:-18),iw,ih);
-  ctx.textAlign='center';
-  ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=16;
-  ctx.fillStyle='#fff';ctx.font='bold 52px Arial';
-  ctx.fillText(clipTxt(ctx,title,1180),W/2,618);
-  ctx.font='36px Arial';ctx.fillStyle='#bbb';
-  ctx.fillText(clipTxt(ctx,artist,1180),W/2,664);
+  const W=1280, H=720;
+
+  // ── Sfondo nero ──
+  ctx.fillStyle='#000';
+  ctx.fillRect(0,0,W,H);
+
+  // ── FOTO grande — occupa quasi tutto il video ──
+  const sc = Math.min(W/img.width, H/img.height);
+  const iw = img.width  * sc;
+  const ih = img.height * sc;
+  const ix = (W-iw)/2;
+  const iy = (H-ih)/2;
+  ctx.drawImage(img, ix, iy, iw, ih);
+
+  // ── Gradiente scuro in basso per titolo/artista ──
+  const gradBot = ctx.createLinearGradient(0, H-180, 0, H);
+  gradBot.addColorStop(0,'rgba(0,0,0,0)');
+  gradBot.addColorStop(1,'rgba(0,0,0,0.88)');
+  ctx.fillStyle = gradBot;
+  ctx.fillRect(0, H-180, W, 180);
+
+  // ── TITOLO in basso a sinistra sopra il gradiente ──
+  ctx.textAlign='left';
+  ctx.shadowColor='rgba(0,0,0,1)'; ctx.shadowBlur=14;
+  ctx.fillStyle='#ffffff';
+  ctx.font='bold 42px Arial';
+  ctx.fillText(clipTxt(ctx,title,700), 50, H-72);
+
+  // ── ARTISTA sotto il titolo ──
+  ctx.font='28px Arial';
+  ctx.fillStyle='rgba(255,255,255,0.75)';
+  ctx.fillText(clipTxt(ctx,artist,700), 50, H-36);
   ctx.shadowBlur=0;
+
+  // ── TESTO trascritto al CENTRO della foto — overlay ──
   if(sub){
-    ctx.font='bold 37px Arial';
-    const s=clipTxt(ctx,sub,1160),tw=ctx.measureText(s).width;
-    const bw=tw+44,bh=54,bx=(W-bw)/2,by=H-65;
-    ctx.fillStyle='rgba(0,0,0,.72)';
-    roundRect(ctx,bx,by,bw,bh,11);ctx.fill();
-    ctx.shadowColor='#d6004c';ctx.shadowBlur=22;
-    ctx.fillStyle='#fff';ctx.fillText(s,W/2,by+38);
+    ctx.font='bold 46px Arial';
+    ctx.textAlign='center';
+
+    // Spezza in righe
+    const words   = sub.split(' ');
+    const maxLineW= 1100;
+    const lines   = [];
+    let   line    = '';
+    for(const w of words){
+      const test = line ? line+' '+w : w;
+      if(ctx.measureText(test).width > maxLineW && line){
+        lines.push(line); line=w;
+      } else { line=test; }
+    }
+    if(line) lines.push(line);
+
+    const lineH  = 62;
+    const totalH = lines.length * lineH;
+    // Centro verticale della foto
+    const centerY = iy + ih/2;
+    const startY  = centerY - totalH/2 + lineH*0.75;
+
+    // Sfondo scuro dietro il testo
+    const pad  = 30;
+    const maxW = Math.max(...lines.map(l=>ctx.measureText(l).width));
+    const boxW = Math.min(maxW + pad*2, 1200);
+    const boxH = totalH + pad*1.5;
+    const boxX = (W-boxW)/2;
+    const boxY = startY - lineH*0.75 - pad*0.5;
+
+    ctx.fillStyle='rgba(0,0,0,0.62)';
+    roundRect(ctx, boxX, boxY, boxW, boxH, 18);
+    ctx.fill();
+
+    // Testo con glow bianco + contorno
+    ctx.shadowColor='rgba(0,0,0,0.95)';
+    ctx.shadowBlur=18;
+    ctx.fillStyle='#ffffff';
+    ctx.strokeStyle='rgba(0,0,0,0.5)';
+    ctx.lineWidth=3;
+    lines.forEach((l,i)=>{
+      const ly = startY + i*lineH;
+      ctx.strokeText(clipTxt(ctx,l,1140), W/2, ly);
+      ctx.fillText(clipTxt(ctx,l,1140),   W/2, ly);
+    });
     ctx.shadowBlur=0;
+    ctx.lineWidth=1;
   }
 }
 
