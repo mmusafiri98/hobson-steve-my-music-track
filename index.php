@@ -189,17 +189,16 @@
     width: 0;
     background: linear-gradient(90deg, var(--red), var(--purple));
     border-radius: 4px;
-    transition: width 0.3s ease;
+    transition: width 0.2s linear;
   }
 
-  .status-text {
+  .status-sub {
     text-align: center;
     margin-top: 10px;
-    font-size: 0.85rem;
-    color: #aaa;
+    font-size: 0.82rem;
+    color: #666;
   }
 
-  /* Gallery */
   .gallery { margin-top: 10px; }
 
   .gallery h2 {
@@ -207,7 +206,6 @@
     font-size: 1.8rem;
     letter-spacing: 2px;
     margin-bottom: 20px;
-    color: #fff;
   }
 
   .video-grid {
@@ -225,28 +223,13 @@
   }
 
   .video-card:hover { transform: translateY(-3px); }
+  .video-card video { width: 100%; height: 175px; object-fit: cover; display: block; }
 
-  .video-card video {
-    width: 100%;
-    height: 175px;
-    object-fit: cover;
-    display: block;
-  }
-
-  .video-info {
-    padding: 12px 14px 4px;
-    font-size: 0.9rem;
-    line-height: 1.5;
-  }
-
+  .video-info { padding: 12px 14px 4px; font-size: 0.9rem; line-height: 1.5; }
   .video-info b { font-size: 1rem; }
   .video-info span { color: #888; font-size: 0.85rem; }
 
-  .video-actions {
-    display: flex;
-    gap: 8px;
-    padding: 10px 14px 14px;
-  }
+  .video-actions { display: flex; gap: 8px; padding: 10px 14px 14px; }
 
   .download-btn, .delete-btn {
     flex: 1;
@@ -258,43 +241,17 @@
     font-family: 'DM Sans', sans-serif;
     font-weight: 600;
     transition: opacity 0.15s;
-  }
-
-  .download-btn {
-    background: var(--red);
-    color: #fff;
-    text-decoration: none;
-    display: flex;
-    justify-content: center;
-    align-items: center;
     border: none;
   }
 
-  .delete-btn {
-    background: #2a2a2a;
-    color: #aaa;
-    border: none;
-  }
-
+  .download-btn { background: var(--red); color: #fff; text-decoration: none; display: flex; justify-content: center; align-items: center; }
+  .delete-btn   { background: #2a2a2a; color: #aaa; }
   .download-btn:hover, .delete-btn:hover { opacity: 0.8; }
 
-  .empty {
-    text-align: center;
-    color: #444;
-    padding: 70px 20px;
-    font-size: 1.1rem;
-  }
-
+  .empty { text-align: center; color: #444; padding: 70px 20px; font-size: 1.1rem; }
   .empty span { font-size: 2.5rem; display: block; margin-bottom: 10px; }
 
-  footer {
-    text-align: center;
-    padding: 30px;
-    color: #333;
-    font-size: 0.82rem;
-    border-top: 1px solid #1a1a1a;
-    margin-top: 60px;
-  }
+  footer { text-align: center; padding: 30px; color: #333; font-size: 0.82rem; border-top: 1px solid #1a1a1a; margin-top: 60px; }
 
   @media (max-width: 600px) {
     .row { grid-template-columns: 1fr; }
@@ -352,6 +309,7 @@
       <div class="progress-bar">
         <div class="progress-fill" id="progressFill"></div>
       </div>
+      <div class="status-sub" id="statusSub">Non chiudere questa pagina</div>
     </div>
   </div>
 
@@ -370,13 +328,44 @@
 <footer>© 2026 – My Music Studio</footer>
 
 <script>
-/* ── helpers UI ── */
+/* ── UI helpers ── */
 function updateLabel(inputId, labelId, nameId) {
   const f = document.getElementById(inputId).files[0];
   if (f) {
     document.getElementById(labelId).textContent = '✅ ' + f.name;
-    document.getElementById(nameId).textContent = f.name;
+    document.getElementById(nameId).textContent  = f.name;
   }
+}
+
+function setStatus(main, pct, sub) {
+  if (main !== null) document.getElementById('statusText').textContent = main;
+  if (sub  !== null && sub !== undefined) document.getElementById('statusSub').textContent = sub;
+  if (pct  !== null && pct !== undefined) {
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('pctText').textContent      = Math.floor(pct) + '%';
+  }
+}
+
+/* ── Leggi file come base64 DataURL ──
+   CRITICO: usare base64 invece di createObjectURL
+   evita che il canvas venga marcato come "tainted"
+   dal browser, il che bloccherebbe captureStream(). */
+function readAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = e => resolve(e.target.result);
+    reader.onerror = e => reject(new Error('Errore lettura immagine'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function readAsArrayBuffer(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = e => resolve(e.target.result);
+    reader.onerror = e => reject(new Error('Errore lettura audio'));
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 /* ── IndexedDB ── */
@@ -384,60 +373,60 @@ let db;
 
 async function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open("VideoDB", 1);
+    const req = indexedDB.open('VideoDB', 1);
     req.onupgradeneeded = e => {
       const d = e.target.result;
-      if (!d.objectStoreNames.contains("videos"))
-        d.createObjectStore("videos", { keyPath: "id" });
+      if (!d.objectStoreNames.contains('videos'))
+        d.createObjectStore('videos', { keyPath: 'id' });
     };
     req.onsuccess = e => { db = e.target.result; resolve(); };
-    req.onerror  = e => reject(e.target.error);
+    req.onerror   = e => reject(e.target.error);
   });
 }
 
 async function saveVideo(blob, title, artist) {
-  return new Promise(resolve => {
-    const tx = db.transaction("videos", "readwrite");
-    tx.objectStore("videos").put({
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('videos', 'readwrite');
+    tx.objectStore('videos').put({
       id: Date.now().toString(), blob, title, artist, date: Date.now()
     });
     tx.oncomplete = () => resolve();
+    tx.onerror    = e => reject(e.target.error);
   });
 }
 
 async function getVideos() {
   return new Promise(resolve => {
-    const tx  = db.transaction("videos", "readonly");
-    const req = tx.objectStore("videos").getAll();
+    const tx  = db.transaction('videos', 'readonly');
+    const req = tx.objectStore('videos').getAll();
     req.onsuccess = e => resolve(e.target.result || []);
   });
 }
 
 async function deleteVideo(id) {
-  if (!confirm("Eliminare questo video?")) return;
-  const tx = db.transaction("videos", "readwrite");
-  tx.objectStore("videos").delete(id);
+  if (!confirm('Eliminare questo video?')) return;
+  const tx = db.transaction('videos', 'readwrite');
+  tx.objectStore('videos').delete(id);
   tx.oncomplete = () => loadGallery();
 }
 
 async function loadGallery() {
   const vids    = await getVideos();
-  const grid    = document.getElementById("videoGrid");
-  const gallery = document.getElementById("gallery");
-  const empty   = document.getElementById("empty");
-  grid.innerHTML = "";
+  const grid    = document.getElementById('videoGrid');
+  const gallery = document.getElementById('gallery');
+  const empty   = document.getElementById('empty');
+  grid.innerHTML = '';
   if (!vids.length) {
-    gallery.style.display = "none";
-    empty.style.display   = "block";
+    gallery.style.display = 'none';
+    empty.style.display   = 'block';
     return;
   }
-  empty.style.display   = "none";
-  gallery.style.display = "block";
-
+  empty.style.display   = 'none';
+  gallery.style.display = 'block';
   vids.sort((a, b) => b.date - a.date).forEach(v => {
     const url  = URL.createObjectURL(v.blob);
-    const card = document.createElement("div");
-    card.className = "video-card";
+    const card = document.createElement('div');
+    card.className = 'video-card';
     card.innerHTML = `
       <video src="${url}" controls></video>
       <div class="video-info"><b>${v.title}</b><br><span>${v.artist}</span></div>
@@ -449,175 +438,170 @@ async function loadGallery() {
   });
 }
 
-/* ══════════════════════════════════════
-   CREAZIONE VIDEO — FIX principale
-   Il problema originale: audio.onended
-   NON scatta in modo affidabile quando
-   l'audio è gestito da un AudioContext.
-   Soluzione: polling su currentTime
-   con un setInterval che controlla
-   se la traccia è finita.
-══════════════════════════════════════ */
-document.getElementById("createBtn").addEventListener("click", async () => {
-  const title     = document.getElementById("title").value.trim();
-  const artist    = document.getElementById("artist").value.trim();
-  const coverFile = document.getElementById("coverFile").files[0];
-  const audioFile = document.getElementById("audioFile").files[0];
+/* ── Disegna frame sul canvas ── */
+function drawFrame(ctx, img, title, artist) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, 1280, 720);
+  const scale = Math.min(1280 / img.width, 720 / img.height) * 0.72;
+  const x = (1280 - img.width  * scale) / 2;
+  const y = (720  - img.height * scale) / 2 - 45;
+  ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+  ctx.textAlign   = 'center';
+  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowBlur  = 12;
+  ctx.fillStyle   = '#fff';
+  ctx.font        = 'bold 52px Arial';
+  ctx.fillText(title, 640, 655);
+  ctx.font      = '36px Arial';
+  ctx.fillStyle = '#ccc';
+  ctx.fillText(artist, 640, 705);
+  ctx.shadowBlur = 0;
+}
+
+/* ── RESET UI dopo creazione ── */
+function resetUI() {
+  document.getElementById('createBtn').disabled = false;
+  document.getElementById('progressBox').style.display = 'none';
+  document.getElementById('progressFill').style.width  = '0%';
+  document.getElementById('pctText').textContent = '0%';
+  document.getElementById('title').value  = '';
+  document.getElementById('artist').value = '';
+  document.getElementById('coverFile').value = '';
+  document.getElementById('audioFile').value = '';
+  document.getElementById('coverLabel').textContent = '📷 Scegli immagine';
+  document.getElementById('audioLabel').textContent = '🎵 Scegli audio';
+  document.getElementById('coverName').textContent  = 'Nessun file scelto';
+  document.getElementById('audioName').textContent  = 'Nessun file scelto';
+}
+
+/* ══════════════════════════════════════════════
+   CREAZIONE VIDEO — versione corretta
+══════════════════════════════════════════════ */
+document.getElementById('createBtn').addEventListener('click', async () => {
+  const title     = document.getElementById('title').value.trim();
+  const artist    = document.getElementById('artist').value.trim();
+  const coverFile = document.getElementById('coverFile').files[0];
+  const audioFile = document.getElementById('audioFile').files[0];
 
   if (!title || !artist || !coverFile || !audioFile) {
-    alert("Compila tutti i campi e carica cover + audio.");
+    alert('Compila tutti i campi e carica cover + audio.');
     return;
   }
 
-  const btn         = document.getElementById("createBtn");
-  const progressBox = document.getElementById("progressBox");
-  const progressFill= document.getElementById("progressFill");
-  const pctText     = document.getElementById("pctText");
-  const statusText  = document.getElementById("statusText");
+  document.getElementById('createBtn').disabled = true;
+  document.getElementById('progressBox').style.display = 'block';
+  setStatus('Caricamento...', 2);
 
-  btn.disabled             = true;
-  progressBox.style.display = "block";
-  statusText.textContent   = "Avvio...";
+  let drawInterval = null;
+  let audioCtx     = null;
+  let stopped      = false;
+
+  /* Funzione stop sicura (evita doppio stop) */
+  function doStop(recorder) {
+    if (stopped) return;
+    stopped = true;
+    if (drawInterval) { clearInterval(drawInterval); drawInterval = null; }
+    setStatus('Finalizzazione...', 99);
+    if (recorder.state === 'recording' || recorder.state === 'paused') {
+      recorder.requestData();
+      setTimeout(() => {
+        try { recorder.stop(); } catch(e) {}
+        if (audioCtx) audioCtx.close().catch(() => {});
+      }, 500);
+    }
+  }
 
   try {
-    /* Carica immagine */
+    /* 1. Immagine come base64 (NO canvas tainted) */
+    setStatus('Caricamento immagine...', 5);
+    const imgDataURL = await readAsDataURL(coverFile);
     const img = new Image();
-    img.src   = URL.createObjectURL(coverFile);
-    await new Promise(res => img.onload = res);
+    await new Promise((res, rej) => {
+      img.onload  = res;
+      img.onerror = () => rej(new Error('Impossibile caricare l\'immagine'));
+      img.src = imgDataURL;
+    });
 
-    /* Canvas */
-    const canvas = document.createElement("canvas");
-    canvas.width  = 1280;
-    canvas.height = 720;
-    const ctx = canvas.getContext("2d");
-
-    /* Audio — usiamo AudioContext solo per il routing verso MediaStream */
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-    /* Decodifica il file audio in ArrayBuffer */
-    const arrayBuffer = await audioFile.arrayBuffer();
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    /* 2. Audio come ArrayBuffer */
+    setStatus('Decodifica audio...', 10);
+    const audioBuf = await readAsArrayBuffer(audioFile);
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuffer = await audioCtx.decodeAudioData(audioBuf);
     const duration    = audioBuffer.duration;
 
-    /* Sorgente: BufferSource (non ha il bug di onended) */
-    const source = audioCtx.createBufferSource();
-    source.buffer = audioBuffer;
+    /* 3. Canvas */
+    const canvas = document.createElement('canvas');
+    canvas.width  = 1280;
+    canvas.height = 720;
+    const ctx2d = canvas.getContext('2d');
+    drawFrame(ctx2d, img, title, artist); // frame iniziale
 
-    /* Destination → traccia audio per il recorder */
-    const dest = audioCtx.createMediaStreamDestination();
-    source.connect(dest);
-
-    /* Stream video dal canvas */
+    /* 4. Stream dal canvas */
     const canvasStream = canvas.captureStream(30);
 
-    /* Aggiunge la traccia audio allo stream video */
+    /* 5. Audio source → dest stream */
+    const bufSrc = audioCtx.createBufferSource();
+    bufSrc.buffer = audioBuffer;
+    const dest = audioCtx.createMediaStreamDestination();
+    bufSrc.connect(dest);
     const audioTrack = dest.stream.getAudioTracks()[0];
-    canvasStream.addTrack(audioTrack);
+    if (audioTrack) canvasStream.addTrack(audioTrack);
 
-    /* MediaRecorder */
-    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-      ? "video/webm;codecs=vp9,opus"
-      : "video/webm";
+    /* 6. MediaRecorder — timeslice 1000ms per chunk continui */
+    const mimeType = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm']
+      .find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
 
     const recorder = new MediaRecorder(canvasStream, { mimeType });
     const chunks   = [];
 
-    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.ondataavailable = e => {
+      if (e.data && e.data.size > 0) chunks.push(e.data);
+    };
 
     recorder.onstop = async () => {
-      statusText.textContent = "Salvataggio...";
-      const blob = new Blob(chunks, { type: "video/webm" });
-      await saveVideo(blob, title, artist);
-
-      /* Reset UI */
-      btn.disabled              = false;
-      progressBox.style.display = "none";
-      progressFill.style.width  = "0%";
-      pctText.textContent       = "0%";
-      statusText.textContent    = "Elaborazione...";
-      document.getElementById("title").value  = "";
-      document.getElementById("artist").value = "";
-      document.getElementById("coverFile").value = "";
-      document.getElementById("audioFile").value = "";
-      document.getElementById("coverLabel").textContent = "📷 Scegli immagine";
-      document.getElementById("audioLabel").textContent = "🎵 Scegli audio";
-      document.getElementById("coverName").textContent  = "Nessun file scelto";
-      document.getElementById("audioName").textContent  = "Nessun file scelto";
-
-      loadGallery();
-    };
-
-    /* Funzione draw */
-    const drawFrame = () => {
-      /* Sfondo scuro con leggero blur della cover */
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, 1280, 720);
-
-      /* Cover centrata */
-      const scale = Math.min(1280 / img.width, 720 / img.height) * 0.72;
-      const x = (1280 - img.width  * scale) / 2;
-      const y = (720  - img.height * scale) / 2 - 45;
-      ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
-
-      /* Testi */
-      ctx.textAlign = "center";
-      ctx.shadowColor = "rgba(0,0,0,0.7)";
-      ctx.shadowBlur  = 10;
-      ctx.fillStyle   = "#fff";
-      ctx.font        = "bold 52px Arial";
-      ctx.fillText(title, 640, 655);
-      ctx.font        = "36px Arial";
-      ctx.fillStyle   = "#ccc";
-      ctx.fillText(artist, 640, 705);
-      ctx.shadowBlur  = 0;
-    };
-
-    /* Avvia recording e sorgente audio */
-    recorder.start(1000); // chunk ogni secondo per sicurezza
-    source.start(0);
-    statusText.textContent = "Registrazione in corso...";
-
-    const startTime = audioCtx.currentTime;
-
-    /* ── FIX PRINCIPALE: polling basato su AudioContext.currentTime ── */
-    const drawAndProgress = setInterval(() => {
-      drawFrame();
-
-      const elapsed = audioCtx.currentTime - startTime;
-      const pct     = Math.min((elapsed / duration) * 100, 100);
-      progressFill.style.width = pct + "%";
-      pctText.textContent      = Math.floor(pct) + "%";
-
-      /* Quando l'audio è finito, stoppiamo */
-      if (elapsed >= duration - 0.1) {
-        clearInterval(drawAndProgress);
-        statusText.textContent = "Finalizzazione...";
-        recorder.requestData();
-        setTimeout(() => {
-          recorder.stop();
-          audioCtx.close();
-        }, 300);
-      }
-    }, 33); // ~30fps
-
-    /* Fallback: onended di source (quando disponibile) */
-    source.onended = () => {
-      if (recorder.state === "recording") {
-        clearInterval(drawAndProgress);
-        statusText.textContent = "Finalizzazione...";
-        recorder.requestData();
-        setTimeout(() => {
-          recorder.stop();
-          audioCtx.close();
-        }, 300);
+      setStatus('Salvataggio...', 99);
+      try {
+        if (chunks.length === 0)
+          throw new Error('Nessun dato video prodotto. Prova con Chrome o Edge.');
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        await saveVideo(blob, title, artist);
+        setStatus('✅ Salvato!', 100, '');
+        setTimeout(() => { resetUI(); loadGallery(); }, 900);
+      } catch(err) {
+        alert('Errore salvataggio: ' + err.message);
+        resetUI();
       }
     };
+
+    /* 7. Start */
+    setStatus('Registrazione in corso...', 12, 'Non chiudere questa pagina');
+    recorder.start(1000);      // chunk ogni 1s
+    const t0 = audioCtx.currentTime;
+    bufSrc.start(0);
+
+    /* 8. Loop draw + avanzamento */
+    drawInterval = setInterval(() => {
+      if (stopped) return;
+      const elapsed = audioCtx.currentTime - t0;
+      const pct = Math.min((elapsed / duration) * 100, 98);
+      const sStr = Math.floor(elapsed) + 's / ' + Math.floor(duration) + 's';
+      setStatus('Registrazione in corso...', pct, sStr);
+      drawFrame(ctx2d, img, title, artist);
+
+      if (elapsed >= duration) {
+        doStop(recorder);
+      }
+    }, 50); // 20fps per il progresso, 30fps effettivi dal captureStream
+
+    /* Fallback onended */
+    bufSrc.onended = () => doStop(recorder);
 
   } catch (err) {
+    if (drawInterval) clearInterval(drawInterval);
+    if (audioCtx)     audioCtx.close().catch(() => {});
     console.error(err);
-    alert("Errore: " + err.message);
-    btn.disabled              = false;
-    progressBox.style.display = "none";
+    alert('Errore: ' + err.message);
+    resetUI();
   }
 });
 
