@@ -413,97 +413,127 @@ async function transcribeAll(audioFile,language){
    3. endIdx bloccato nell'intervallo [0, WN-1] PRIMA di accedere all'array
 ══════════════════════════════════════════════════════════════ */
 function syncLyricsWithTimings(whisperSegs, rawLyrics, userOffset){
+  // Valore default e validazione
   if(typeof userOffset !== 'number' || isNaN(userOffset)) userOffset = -0.3;
 
-  /* 1 — Righe utente: una riga = un sottotitolo */
+  /* 1 — Righe utente */
   const lines = rawLyrics.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
   if(!lines.length || !whisperSegs.length) return whisperSegs;
 
-  /* 2 — Calcola durata totale reale dell'audio da Whisper */
-  const validSegs = whisperSegs.filter(s=>
-    typeof s.start==='number' && typeof s.end==='number' &&
-    !isNaN(s.start) && !isNaN(s.end) && s.end > s.start
-  );
-  const totalDur = validSegs.length
-    ? validSegs[validSegs.length-1].end
-    : 180;
+  const totalDur = whisperSegs[whisperSegs.length-1].end || 180;
 
-  /* ══════════════════════════════════════════════════════════
-     ALGORITMO: DIVISIONE TEMPORALE LINEARE
-     
-     Problema con il matching testuale:
-     Il ritornello "credo che dio..." appare 3 volte nel testo.
-     L'algoritmo di similarità trova sempre la PRIMA occorrenza
-     nel trascritto Whisper, perdendo la sincronizzazione dopo
-     la prima ripetizione.
-     
-     Soluzione: ignoriamo il testo di Whisper completamente.
-     Dividiamo la durata dell'audio in N fette uguali,
-     dove N = numero di righe. Ogni riga occupa la sua fetta.
-     
-     Poi AFFINIAMO ogni riga cercando il segmento Whisper
-     più vicino al centro della sua fetta temporale.
-     Questo aggiustamento locale migliora la precisione
-     senza mai perdere l'ordine cronologico.
-  ══════════════════════════════════════════════════════════ */
+  /* 2 — Tokenizzatore */
+  function tokenize(str){
+    return (str||'').toLowerCase()
+      .replace(/[^a-zA-ZÀ-ÿ0-9\s]/g,' ')
+      .split(/\s+/)
+      .filter(w=>w.length>1);
+  }
 
-  const N       = lines.length;
-  const sliceDur = totalDur / N;   // durata di ogni fetta in secondi
-  const result  = [];
+  /* 3 — Similarità Jaccard */
+  function jaccard(a,b){
+    if(!a.length||!b.length) return 0;
+    const sa=new Set(a), sb=new Set(b);
+    let inter=0;
+    for(const w of sa) if(sb.has(w)) inter++;
+    const union=sa.size+sb.size-inter;
+    return union===0 ? 0 : inter/union;
+  }
 
-  for(let i=0; i<N; i++){
-    /* Centro temporale di questa riga */
-    const tCenter = (i + 0.5) * sliceDur;
-
-    /* Inizio e fine della fetta */
-    const tSliceStart = i * sliceDur;
-    const tSliceEnd   = (i + 1) * sliceDur;
-
-    /* Cerca il segmento Whisper più vicino al centro
-       MA solo dentro la fetta ±30% per non sconfinare */
-    const margin = sliceDur * 0.3;
-    const tMin   = Math.max(0, tSliceStart - margin);
-    const tMax   = Math.min(totalDur, tSliceEnd   + margin);
-
-    let bestSeg  = null;
-    let bestDist = Infinity;
-    for(const s of validSegs){
-      if(s.start < tMin || s.start > tMax) continue;
-      const dist = Math.abs(s.start - tCenter);
-      if(dist < bestDist){ bestDist=dist; bestSeg=s; }
-    }
-
-    /* Se trovato un segmento vicino → usa il suo timestamp.
-       Altrimenti → usa il centro della fetta come fallback. */
-    const rawStart = bestSeg ? bestSeg.start : tSliceStart;
-
-    result.push({
-      start: Math.max(0, rawStart + userOffset),
-      end:   Math.max(
-        bestSeg ? bestSeg.end : tSliceEnd,
-        rawStart + 1.2
-      ),
-      text: lines[i]
+  /* 4 — Costruisce wWords: lista {word, time} da tutti i segmenti Whisper
+          PROTEZIONE: salta segmenti con timestamp non validi */
+  const wWords=[];
+  for(const seg of whisperSegs){
+    if(typeof seg.start!=='number'||typeof seg.end!=='number') continue;
+    if(isNaN(seg.start)||isNaN(seg.end)||seg.end<=seg.start) continue;
+    const toks=tokenize(seg.text||'');
+    if(!toks.length) continue;
+    const dt=(seg.end-seg.start)/toks.length;
+    toks.forEach((w,wi)=>{
+      wWords.push({word:w, time:seg.start+wi*dt});
     });
   }
 
-  /* 3 — Garantisce ordine strettamente crescente */
-  for(let i=1; i<result.length; i++){
-    if(result[i].start <= result[i-1].start){
-      result[i].start = result[i-1].start + (sliceDur * 0.8);
-      result[i].end   = Math.max(result[i].end, result[i].start + 1.2);
-    }
+  /* 5 — Fallback se nessuna parola estratta */
+  if(!wWords.length){
+    logT('⚠️ Nessuna parola estratta da Whisper — distribuzione uniforme');
+    return lines.map((text,i)=>({
+      start: Math.max(0,(i/lines.length)*totalDur+userOffset),
+      end:   ((i+1)/lines.length)*totalDur,
+      text
+    }));
   }
 
-  /* 4 — Rimuove sovrapposizioni */
-  for(let i=0; i<result.length-1; i++){
+  /* ── WN: lunghezza dell'array, usata per TUTTI i bounds check ── */
+  const WN = wWords.length;
+
+  /* 6 — Sliding window con TRIPLO bounds check (il cuore del fix) */
+  const result=[];
+  let cursor=0;
+
+  for(let li=0;li<lines.length;li++){
+    const lineWords=tokenize(lines[li]);
+    if(!lineWords.length) continue;
+
+    const wLen    = lineWords.length;
+    const winSize = Math.max(wLen, Math.round(wLen*1.3));
+
+    let bestScore = -1;
+    let bestIdx   = cursor; // valore iniziale sicuro (cursor è sempre valido)
+
+    /* ── FIX 1: searchEnd non scende mai sotto cursor ──
+       Prima era: Math.min(cursor + winSize*4, total - winSize + 1)
+       Problema: "total - winSize + 1" può essere negativo → searchEnd < cursor
+       Soluzione: Math.max(..., cursor) garantisce searchEnd >= cursor */
+    const searchEnd = Math.max(
+      cursor,
+      Math.min(cursor + winSize * 4, WN - 1)
+    );
+
+    for(let wi=cursor; wi<=searchEnd; wi++){
+      /* Bounds check interno per lo slice */
+      if(wi >= WN) break;
+      const sliceEnd = Math.min(wi+winSize, WN);
+      const slice    = wWords.slice(wi, sliceEnd).map(x=>x.word);
+      const score    = jaccard(lineWords, slice);
+      if(score > bestScore){ bestScore=score; bestIdx=wi; }
+    }
+
+    /* ── FIX 2: bestIdx bloccato in [0, WN-1] PRIMA dell'accesso ──
+       Senza questo: wWords[bestIdx] potrebbe essere undefined */
+    bestIdx = Math.max(0, Math.min(bestIdx, WN-1));
+
+    /* Accesso SICURO — bestIdx è validato */
+    const startTime = wWords[bestIdx].time;
+
+    /* ── FIX 3: endIdx bloccato in [0, WN-1] PRIMA dell'accesso ──
+       Senza questo: wWords[endIdx] potrebbe essere undefined */
+    const endIdx = Math.max(0, Math.min(bestIdx + winSize - 1, WN-1));
+
+    /* Accesso SICURO — endIdx è validato */
+    const endTime = wWords[endIdx].time;
+
+    /* Cursore avanza solo in avanti, mai oltre WN-1 */
+    cursor = Math.min(
+      Math.max(cursor, bestIdx + Math.floor(winSize*0.7)),
+      WN - 1
+    );
+
+    result.push({
+      start: Math.max(0, startTime + userOffset),
+      end:   Math.max(endTime, startTime + 1.5),
+      text:  lines[li]
+    });
+  }
+
+  /* 7 — Fix sovrapposizioni */
+  for(let i=0;i<result.length-1;i++){
     if(result[i].end > result[i+1].start){
-      result[i].end = Math.max(result[i].start + 0.4, result[i+1].start - 0.05);
+      result[i].end = Math.max(result[i].start+0.5, result[i+1].start-0.05);
     }
   }
 
-  logT('🔗 '+result.length+' righe → durata '+totalDur.toFixed(0)+'s');
-  logT('⏱ Intervallo per riga: ~'+sliceDur.toFixed(1)+'s');
+  logT('🔗 '+result.length+' righe sincronizzate con i timestamp Whisper');
   return result;
 }
 
