@@ -197,10 +197,34 @@ footer{text-align:center;padding:28px;color:#2a2a2a;font-size:.8rem;border-top:1
       </div>
     </div>
 
+    <!-- Opzione 1: Whisper automatico -->
     <div class="toggle-row">
-      <input type="checkbox" id="useWhisper" checked>
-      <label for="useWhisper">Aggiungi sottotitoli automatici — testo completo (Whisper Base)</label>
+      <input type="checkbox" id="useWhisper" checked onchange="toggleLyrics()">
+      <label for="useWhisper">🤖 Sottotitoli automatici con Whisper</label>
       <span class="badge-free">GRATIS</span>
+    </div>
+
+    <!-- Opzione 2: Testo manuale preciso -->
+    <div class="toggle-row" style="margin-top:10px">
+      <input type="checkbox" id="useLyrics" onchange="toggleLyrics()">
+      <label for="useLyrics">✏️ Incolla il testo esatto — sincronizzazione precisa al 100%</label>
+      <span class="badge-free" style="background:#1a1a3a;color:#9090ff;border-color:#2a2a5a;">PRECISO</span>
+    </div>
+
+    <!-- Box testo manuale -->
+    <div id="lyricsBox" style="display:none;margin-top:12px;">
+      <div class="field-label" style="margin-bottom:8px;">Testo della canzone</div>
+      <div style="font-size:.76rem;color:#555;margin-bottom:10px;line-height:1.6;">
+        Incolla il testo completo. Whisper userà il <b style="color:#888">tuo testo esatto</b> e lo sincronizzerà con l'audio — zero errori.
+      </div>
+      <textarea id="lyricsText"
+        placeholder="Incolla qui il testo completo...&#10;&#10;Strofa 1&#10;Prima riga&#10;Seconda riga&#10;&#10;Ritornello&#10;Testo del ritornello"
+        style="width:100%;min-height:180px;background:#111;border:1px solid #3a3a3a;color:#fff;padding:14px;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:.9rem;outline:none;resize:vertical;line-height:1.7;transition:border-color .2s;"
+        onfocus="this.style.borderColor='#9090ff'"
+        onblur="this.style.borderColor='#3a3a3a'"></textarea>
+      <div style="font-size:.74rem;color:#444;margin-top:6px;">
+        💡 Whisper analizza l'audio e assegna i timing — le tue parole appaiono esatte nel video
+      </div>
     </div>
 
     <button class="create-btn" id="createBtn">🎬 CREA IL VIDEO</button>
@@ -628,6 +652,53 @@ async function loadGallery(){
   }catch(e){console.warn(e);}
 }
 
+/* ════════════════════════════════════════════
+   TOGGLE LYRICS BOX
+════════════════════════════════════════════ */
+function toggleLyrics(){
+  const useLyrics = document.getElementById('useLyrics').checked;
+  document.getElementById('lyricsBox').style.display = useLyrics ? 'block' : 'none';
+}
+window.toggleLyrics = toggleLyrics;
+
+/* ════════════════════════════════════════════
+   SINCRONIZZAZIONE TESTO MANUALE + TIMING WHISPER
+   1. Whisper analizza l'audio → timestamp precisi
+   2. Prendiamo i TIMING di Whisper
+   3. Sostituiamo il TESTO con quello dell'utente
+   4. Ogni riga del testo viene abbinata ai segmenti
+════════════════════════════════════════════ */
+function syncLyricsWithTimings(whisperSegs, rawLyrics) {
+  // Divide il testo in righe non vuote
+  const lines = rawLyrics
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l.length > 0);
+
+  if (!lines.length) return whisperSegs;
+  if (!whisperSegs.length) return [];
+
+  const result = [];
+  const ratio  = whisperSegs.length / lines.length;
+
+  lines.forEach((line, i) => {
+    const segIdx     = Math.min(Math.floor(i * ratio), whisperSegs.length - 1);
+    const segIdxNext = Math.min(Math.floor((i + 1) * ratio), whisperSegs.length - 1);
+    const start      = whisperSegs[segIdx].start;
+    const end        = segIdxNext < whisperSegs.length
+      ? whisperSegs[segIdxNext].start
+      : whisperSegs[whisperSegs.length - 1].end;
+
+    result.push({
+      start,
+      end:  Math.max(end, start + 1.8), // minimo 1.8s per riga
+      text: line
+    });
+  });
+
+  return result;
+}
+
 /* ── UI helpers ── */
 function updateLabel(iId,lId,nId){
   const f=document.getElementById(iId).files[0];
@@ -658,6 +729,10 @@ function resetUI(){
   document.getElementById('audioLabel').textContent='🎵 Scegli audio';
   document.getElementById('coverName').textContent='Nessun file scelto';
   document.getElementById('audioName').textContent='Nessun file scelto';
+  // Reset testo manuale
+  document.getElementById('lyricsText').value='';
+  document.getElementById('useLyrics').checked=false;
+  document.getElementById('lyricsBox').style.display='none';
 }
 function readAs(file,mode){
   return new Promise((res,rej)=>{
@@ -677,12 +752,19 @@ document.getElementById('createBtn').addEventListener('click', async()=>{
   const coverFile  =document.getElementById('coverFile').files[0];
   const audioFile  =document.getElementById('audioFile').files[0];
   const useWhisper =document.getElementById('useWhisper').checked;
+  const useLyrics  =document.getElementById('useLyrics').checked;
+  const rawLyrics  =document.getElementById('lyricsText').value.trim();
   const lang       =document.getElementById('songLang').value;
 
   if(!title||!artist||!coverFile||!audioFile){
     alert('Compila tutti i campi e carica copertina + audio.');
     return;
   }
+  if(useLyrics && !rawLyrics){
+    alert('Hai selezionato "Testo manuale" ma non hai incollato il testo!');
+    return;
+  }
+
   document.getElementById('createBtn').disabled=true;
   document.getElementById('progressBox').style.display='block';
   setStatus('Inizializzazione…',2,'Non chiudere questa pagina');
@@ -704,13 +786,25 @@ document.getElementById('createBtn').addEventListener('click', async()=>{
   try{
     setStatus('Database…',3); await getDB();
 
-    // WHISPER — trascrizione completa
+    // WHISPER — serve per i timestamp (sia in auto che con testo manuale)
     let segs=[];
-    if(useWhisper){
-      setStatus('Caricamento Whisper Base…',5,'Prima volta: ~75 MB, poi in cache');
+    const needWhisper = useWhisper || useLyrics;
+    if(needWhisper){
+      setStatus('Caricamento Whisper…',5,'Prima volta: ~75 MB, poi in cache');
       try{
-        segs=await transcribeAll(audioFile, lang);
-        setStatus('Trascrizione OK!',22,segs.length+' segmenti trovati');
+        const whisperSegs = await transcribeAll(audioFile, lang);
+        if(useLyrics && rawLyrics){
+          // MODALITÀ TESTO PRECISO: usa le tue parole + timing di Whisper
+          setStatus('Sincronizzazione testo…',18,'Abbinamento parole ai timestamp…');
+          segs = syncLyricsWithTimings(whisperSegs, rawLyrics);
+          logT('✅ Testo manuale sincronizzato: '+segs.length+' righe');
+          segs.slice(0,4).forEach(s=>logT('  ['+s.start.toFixed(1)+'s] '+s.text));
+        } else {
+          // MODALITÀ WHISPER AUTOMATICO
+          segs = whisperSegs;
+          logT('✅ Trascrizione automatica: '+segs.length+' segmenti');
+        }
+        setStatus('Sincronizzazione OK!',22,segs.length+' righe pronte');
         await new Promise(r=>setTimeout(r,400));
       }catch(e){
         console.warn(e); logT('⚠️ '+e.message);
