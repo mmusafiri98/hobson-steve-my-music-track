@@ -225,6 +225,19 @@ footer{text-align:center;padding:28px;color:#2a2a2a;font-size:.8rem;border-top:1
       <div style="font-size:.74rem;color:#444;margin-top:6px;">
         💡 Whisper analizza l'audio e assegna i timing — le tue parole appaiono esatte nel video
       </div>
+
+      <!-- Regolazione anticipo/ritardo -->
+      <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span style="font-size:.78rem;color:#777;white-space:nowrap;">⏱ Anticipo/Ritardo:</span>
+        <input type="range" id="lyricsOffset" min="-2.0" max="2.0" step="0.1" value="-0.3"
+          style="flex:1;accent-color:#9090ff;min-width:120px;"
+          oninput="document.getElementById('offsetVal').textContent=
+            (parseFloat(this.value)>=0?'+':'')+parseFloat(this.value).toFixed(1)+'s'">
+        <span id="offsetVal" style="font-size:.82rem;color:#9090ff;width:40px;text-align:right;">-0.3s</span>
+        <span style="font-size:.72rem;color:#444;">
+          &larr; anticipa &nbsp;|&nbsp; ritarda &rarr;
+        </span>
+      </div>
     </div>
 
     <button class="create-btn" id="createBtn">🎬 CREA IL VIDEO</button>
@@ -668,8 +681,9 @@ window.toggleLyrics = toggleLyrics;
    3. Sostituiamo il TESTO con quello dell'utente
    4. Ogni riga del testo viene abbinata ai segmenti
 ════════════════════════════════════════════ */
-function syncLyricsWithTimings(whisperSegs, rawLyrics) {
-  // Divide il testo in righe non vuote
+function syncLyricsWithTimings(whisperSegs, rawLyrics, userOffset) {
+  userOffset = userOffset || 0;
+  // ── Prepara le righe utente ──────────────────────────────────
   const lines = rawLyrics
     .split('\n')
     .map(l => l.trim())
@@ -678,23 +692,102 @@ function syncLyricsWithTimings(whisperSegs, rawLyrics) {
   if (!lines.length) return whisperSegs;
   if (!whisperSegs.length) return [];
 
-  const result = [];
-  const ratio  = whisperSegs.length / lines.length;
+  // ── Estrai parole normalizzate da una stringa ─────────────────
+  function tokenize(str) {
+    return str.toLowerCase()
+      .replace(/[^a-zA-ZÀ-ÿ0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 1);
+  }
 
-  lines.forEach((line, i) => {
-    const segIdx     = Math.min(Math.floor(i * ratio), whisperSegs.length - 1);
-    const segIdxNext = Math.min(Math.floor((i + 1) * ratio), whisperSegs.length - 1);
-    const start      = whisperSegs[segIdx].start;
-    const end        = segIdxNext < whisperSegs.length
-      ? whisperSegs[segIdxNext].start
-      : whisperSegs[whisperSegs.length - 1].end;
+  // ── Similarità Jaccard tra due insiemi di parole ─────────────
+  // Restituisce 0..1 (1 = identici)
+  function similarity(wordsA, wordsB) {
+    if (!wordsA.length || !wordsB.length) return 0;
+    const setA = new Set(wordsA);
+    const setB = new Set(wordsB);
+    let inter = 0;
+    for (const w of setA) if (setB.has(w)) inter++;
+    const union = setA.size + setB.size - inter;
+    return union === 0 ? 0 : inter / union;
+  }
+
+  // ── Costruisce testo continuo di Whisper con timestamp per parola ──
+  // Whisper dà segmenti con start/end — distribuiamo le parole
+  // uniformemente all'interno di ogni segmento
+  const whisperWords = []; // { word, time }
+  for (const seg of whisperSegs) {
+    const words = tokenize(seg.text);
+    if (!words.length) continue;
+    const dt = (seg.end - seg.start) / words.length;
+    words.forEach((w, wi) => {
+      whisperWords.push({ word: w, time: seg.start + wi * dt });
+    });
+  }
+
+  if (!whisperWords.length) {
+    // Fallback: distribuzione uniforme sulla durata totale
+    const totalDur = whisperSegs[whisperSegs.length-1].end;
+    return lines.map((text, i) => ({
+      start: (i / lines.length) * totalDur,
+      end:   ((i + 1) / lines.length) * totalDur,
+      text
+    }));
+  }
+
+  // ── Per ogni riga utente: trova la finestra temporale ottimale ──
+  // Usiamo una sliding window: per ogni riga confrontiamo le sue
+  // parole con blocchi consecutivi di parole Whisper e prendiamo
+  // il blocco con la maggiore similarità
+  const result  = [];
+  let   cursor  = 0; // indice minimo in whisperWords (non tornare indietro)
+
+  for (let li = 0; li < lines.length; li++) {
+    const lineWords = tokenize(lines[li]);
+    if (!lineWords.length) continue;
+
+    const wLen   = lineWords.length;
+    const total  = whisperWords.length;
+
+    // Stima quante parole Whisper corrispondono a questa riga
+    const windowSize = Math.max(wLen, Math.round(wLen * 1.3));
+
+    let bestScore = -1;
+    let bestIdx   = cursor;
+
+    // Cerca nella finestra da cursor fino a fine (con limite per efficienza)
+    const searchEnd = Math.min(cursor + windowSize * 4, total - windowSize + 1);
+    for (let wi = cursor; wi <= searchEnd && wi < total; wi++) {
+      const slice = whisperWords.slice(wi, wi + windowSize).map(x => x.word);
+      const score = similarity(lineWords, slice);
+      if (score > bestScore) {
+        bestScore = score;
+        bestIdx   = wi;
+      }
+    }
+
+    // Timestamp di inizio = prima parola del blocco trovato
+    const startTime = whisperWords[bestIdx].time;
+    // Timestamp di fine = ultima parola del blocco
+    const endIdx    = Math.min(bestIdx + windowSize - 1, total - 1);
+    const endTime   = whisperWords[endIdx].time;
+
+    // Avanza il cursore SOLO in avanti (garanzia di ordine cronologico)
+    cursor = Math.max(cursor, bestIdx + Math.floor(windowSize * 0.7));
 
     result.push({
-      start,
-      end:  Math.max(end, start + 1.8), // minimo 1.8s per riga
-      text: line
+      start: Math.max(0, startTime + userOffset),
+      end:   Math.max(endTime, startTime + 1.5),
+      text:  lines[li]
     });
-  });
+  }
+
+  // ── Fix sovrapposizioni: ogni riga finisce dove inizia la prossima ──
+  for (let i = 0; i < result.length - 1; i++) {
+    if (result[i].end > result[i+1].start) {
+      result[i].end = result[i+1].start - 0.05;
+    }
+  }
 
   return result;
 }
@@ -796,7 +889,9 @@ document.getElementById('createBtn').addEventListener('click', async()=>{
         if(useLyrics && rawLyrics){
           // MODALITÀ TESTO PRECISO: usa le tue parole + timing di Whisper
           setStatus('Sincronizzazione testo…',18,'Abbinamento parole ai timestamp…');
-          segs = syncLyricsWithTimings(whisperSegs, rawLyrics);
+          const offsetEl = document.getElementById('lyricsOffset');
+          const userOffset = offsetEl ? parseFloat(offsetEl.value) : -0.3;
+          segs = syncLyricsWithTimings(whisperSegs, rawLyrics, userOffset);
           logT('✅ Testo manuale sincronizzato: '+segs.length+' righe');
           segs.slice(0,4).forEach(s=>logT('  ['+s.start.toFixed(1)+'s] '+s.text));
         } else {
