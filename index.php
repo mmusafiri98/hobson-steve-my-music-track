@@ -1,6 +1,7 @@
 <?php
 // index.php — My Music Studio
-// Whisper Base — transcription complète (couplet + refrain + tout le texte)
+// Whisper Base — testo completo, gratuito, nel browser
+// FIX: "Cannot read properties of undefined (reading 'time')"
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -24,7 +25,6 @@ header p{margin-top:8px;font-size:.98rem;color:rgba(255,255,255,.75);letter-spac
 
 .container{max-width:960px;margin:auto;padding:34px 20px 60px;}
 
-/* ── BANDEAU MODÈLE ── */
 .model-banner{background:#0d1a0d;border:1px solid #1e3a1e;border-radius:14px;padding:20px 22px;margin-bottom:26px;}
 .model-top{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;}
 .model-icon{font-size:2rem;flex-shrink:0;margin-top:2px;}
@@ -32,7 +32,6 @@ header p{margin-top:8px;font-size:.98rem;color:rgba(255,255,255,.75);letter-spac
 .model-title{font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:1px;color:var(--green);margin-bottom:4px;}
 .model-desc{font-size:.8rem;color:#666;line-height:1.6;}
 .model-desc b{color:#999;}
-
 .status-pill{display:inline-flex;align-items:center;gap:7px;padding:6px 14px;border-radius:20px;background:#111;border:1px solid var(--border);font-size:.78rem;color:#666;transition:all .3s;margin-top:10px;}
 .status-pill .dot{width:8px;height:8px;border-radius:50%;background:#444;flex-shrink:0;transition:background .3s;}
 .status-pill.loading{color:#ffb300;border-color:#3a2a00;}
@@ -43,7 +42,6 @@ header p{margin-top:8px;font-size:.98rem;color:rgba(255,255,255,.75);letter-spac
 .status-pill.error .dot{background:#f44336;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
 
-/* Barre téléchargement modèle */
 .model-dl{display:none;margin-top:16px;background:#0a0a0a;border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
 .model-dl-header{display:flex;justify-content:space-between;font-size:.78rem;color:#888;margin-bottom:8px;}
 .model-dl-track{width:100%;height:7px;background:#1a1a1a;border-radius:4px;overflow:hidden;margin-bottom:10px;}
@@ -52,45 +50,40 @@ header p{margin-top:8px;font-size:.98rem;color:rgba(255,255,255,.75);letter-spac
 .model-dl-files .f-done{color:var(--green);}
 .model-dl-files .f-active{color:#ffb300;}
 
-/* ── UPLOAD BOX ── */
 .upload-box{background:var(--card);border:1px solid var(--border);padding:32px;border-radius:18px;margin-bottom:44px;}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
 .field{display:flex;flex-direction:column;gap:7px;}
 .field-label{font-size:.74rem;letter-spacing:1.2px;text-transform:uppercase;color:#777;font-weight:600;}
 input[type="text"]{background:#111;border:1px solid var(--border);color:#fff;padding:13px 15px;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:.95rem;outline:none;transition:border-color .2s;width:100%;}
 input[type="text"]:focus{border-color:var(--red);}
-
-/* Sélecteur de langue */
-.lang-row{margin-bottom:16px;}
 .lang-select{background:#111;border:1px solid var(--border);color:#fff;padding:12px 15px;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:.9rem;outline:none;width:100%;cursor:pointer;}
 .lang-select:focus{border-color:var(--purple);}
-
 .file-input-wrapper{position:relative;overflow:hidden;}
 .file-btn{background:#111;border:1px dashed #3a3a3a;color:#888;padding:13px 15px;border-radius:10px;cursor:pointer;font-size:.9rem;text-align:center;display:block;width:100%;transition:border-color .2s,color .2s;}
 .file-btn:hover{border-color:var(--red);color:#fff;}
 input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
 .file-name{font-size:.76rem;color:#555;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-
-.toggle-row{display:flex;align-items:center;gap:12px;margin:20px 0 4px;background:#111;border:1px solid var(--border);border-radius:10px;padding:13px 16px;}
+.toggle-row{display:flex;align-items:center;gap:12px;margin:10px 0 0;background:#111;border:1px solid var(--border);border-radius:10px;padding:13px 16px;}
 .toggle-row input[type="checkbox"]{width:18px;height:18px;accent-color:var(--green);cursor:pointer;flex-shrink:0;}
 .toggle-row label{font-size:.92rem;color:#ccc;cursor:pointer;flex:1;}
 .badge-free{background:#1a3a1a;color:var(--green);border:1px solid #2a5a2a;font-size:.66rem;padding:3px 9px;border-radius:20px;font-weight:700;letter-spacing:.5px;}
-
+.badge-prec{background:#1a1a3a;color:#9090ff;border:1px solid #2a2a5a;font-size:.66rem;padding:3px 9px;border-radius:20px;font-weight:700;letter-spacing:.5px;}
 .create-btn{display:block;width:100%;margin-top:22px;background:linear-gradient(135deg,var(--red),var(--purple));color:#fff;border:none;padding:16px;border-radius:50px;font-family:'Bebas Neue',sans-serif;font-size:1.35rem;letter-spacing:2px;cursor:pointer;transition:opacity .2s,transform .15s;}
 .create-btn:hover:not(:disabled){opacity:.88;transform:translateY(-2px);}
 .create-btn:disabled{background:#2a2a2a;color:#555;cursor:not-allowed;}
-
-/* ── PROGRESSION ── */
 .progress{display:none;margin-top:22px;}
 .progress-header{display:flex;justify-content:space-between;font-size:.82rem;color:#888;margin-bottom:9px;}
 .progress-track{width:100%;height:9px;background:#222;border-radius:5px;overflow:hidden;}
 .progress-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--red),var(--purple));border-radius:5px;transition:width .35s ease;}
 .progress-sub{text-align:center;margin-top:10px;font-size:.8rem;color:#555;}
-
-/* Log transcription */
 .trans-log{display:none;margin-top:14px;background:#0a0a0a;border:1px solid var(--border);border-radius:10px;padding:12px 16px;max-height:130px;overflow-y:auto;font-size:.78rem;color:var(--green);font-family:monospace;line-height:1.7;}
-
-/* ── GALERIE ── */
+#lyricsBox{display:none;margin-top:12px;background:#0d0d1a;border:1px solid #2a2a5a;border-radius:12px;padding:18px;}
+#lyricsText{width:100%;min-height:180px;background:#111;border:1px solid #3a3a3a;color:#fff;padding:14px;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:.9rem;outline:none;resize:vertical;line-height:1.7;transition:border-color .2s;}
+#lyricsText:focus{border-color:#9090ff;}
+.offset-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;}
+.offset-row span{font-size:.78rem;color:#777;white-space:nowrap;}
+.offset-row input[type=range]{flex:1;accent-color:#9090ff;min-width:120px;}
+#offsetVal{font-size:.82rem;color:#9090ff;width:44px;text-align:right;}
 .gallery{margin-top:6px;}
 .gallery-title{font-family:'Bebas Neue',sans-serif;font-size:1.9rem;letter-spacing:2px;margin-bottom:22px;}
 .video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(278px,1fr));gap:22px;}
@@ -105,7 +98,6 @@ input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%
 .btn-dl{background:var(--red);color:#fff;}
 .btn-del{background:#252525;color:#888;}
 .btn-dl:hover,.btn-del:hover{opacity:.78;}
-
 .empty{text-align:center;color:#3a3a3a;padding:80px 20px;font-size:1.05rem;}
 .empty-icon{font-size:2.8rem;display:block;margin-bottom:12px;}
 footer{text-align:center;padding:28px;color:#2a2a2a;font-size:.8rem;border-top:1px solid #161616;}
@@ -113,23 +105,21 @@ footer{text-align:center;padding:28px;color:#2a2a2a;font-size:.8rem;border-top:1
 </style>
 </head>
 <body>
-
 <header>
   <h1>🎶 My Music Studio</h1>
-  <p>Testo completo — couplet · refrain · tutto · gratuito · nel browser</p>
+  <p>Testo completo · gratuito · nel browser · zero chiave API</p>
 </header>
 
 <div class="container">
 
-  <!-- Bandeau modèle -->
   <div class="model-banner">
     <div class="model-top">
       <div class="model-icon">🤖</div>
       <div class="model-body">
-        <div class="model-title">Whisper Base — Testo completo · Zero chiave API · Zero crediti</div>
+        <div class="model-title">Whisper Base — Zero chiave API · Zero crediti · Offline dopo primo download</div>
         <div class="model-desc">
-          Modello : <b>Whisper Base (~75 MB)</b> · Prima volta: download unico, poi in cache ·
-          <b>Trascrive TUTTO il testo: strofe, ritornello, bridge, fino alla fine</b>
+          Modello: <b>Whisper Base (~75 MB)</b> · Download unico poi in cache ·
+          <b>Trascrive TUTTO: strofe, ritornello, bridge</b>
         </div>
         <div class="status-pill" id="statusPill">
           <span class="dot"></span>
@@ -158,8 +148,6 @@ footer{text-align:center;padding:28px;color:#2a2a2a;font-size:.8rem;border-top:1
         <input type="text" id="artist" placeholder="Es: Queen">
       </div>
     </div>
-
-    <!-- Sélecteur langue -->
     <div class="row">
       <div class="field">
         <span class="field-label">Lingua della canzone</span>
@@ -175,7 +163,7 @@ footer{text-align:center;padding:28px;color:#2a2a2a;font-size:.8rem;border-top:1
         </select>
       </div>
       <div class="field">
-        <span class="field-label">Pochette (immagine)</span>
+        <span class="field-label">Copertina (immagine)</span>
         <div class="file-input-wrapper">
           <span class="file-btn" id="coverLabel">📷 Scegli immagine</span>
           <input type="file" id="coverFile" accept="image/*"
@@ -184,7 +172,6 @@ footer{text-align:center;padding:28px;color:#2a2a2a;font-size:.8rem;border-top:1
         <div class="file-name" id="coverName">Nessun file scelto</div>
       </div>
     </div>
-
     <div class="row">
       <div class="field">
         <span class="field-label">Audio (MP3, WAV, MP4…)</span>
@@ -197,46 +184,42 @@ footer{text-align:center;padding:28px;color:#2a2a2a;font-size:.8rem;border-top:1
       </div>
     </div>
 
-    <!-- Opzione 1: Whisper automatico -->
-    <div class="toggle-row">
+    <div class="toggle-row" style="margin-top:20px;">
       <input type="checkbox" id="useWhisper" checked onchange="toggleLyrics()">
       <label for="useWhisper">🤖 Sottotitoli automatici con Whisper</label>
       <span class="badge-free">GRATIS</span>
     </div>
-
-    <!-- Opzione 2: Testo manuale preciso -->
-    <div class="toggle-row" style="margin-top:10px">
+    <div class="toggle-row">
       <input type="checkbox" id="useLyrics" onchange="toggleLyrics()">
       <label for="useLyrics">✏️ Incolla il testo esatto — sincronizzazione precisa al 100%</label>
-      <span class="badge-free" style="background:#1a1a3a;color:#9090ff;border-color:#2a2a5a;">PRECISO</span>
+      <span class="badge-prec">PRECISO</span>
     </div>
 
-    <!-- Box testo manuale -->
-    <div id="lyricsBox" style="display:none;margin-top:12px;">
+    <div id="lyricsBox">
       <div class="field-label" style="margin-bottom:8px;">Testo della canzone</div>
       <div style="font-size:.76rem;color:#555;margin-bottom:10px;line-height:1.6;">
-        Incolla il testo completo. Whisper userà il <b style="color:#888">tuo testo esatto</b> e lo sincronizzerà con l'audio — zero errori.
+        Incolla il testo riga per riga. Whisper usa i tuoi testi <b style="color:#888">esatti</b>
+        e li sincronizza con l'audio.
       </div>
       <textarea id="lyricsText"
-        placeholder="Incolla qui il testo completo...&#10;&#10;Strofa 1&#10;Prima riga&#10;Seconda riga&#10;&#10;Ritornello&#10;Testo del ritornello"
-        style="width:100%;min-height:180px;background:#111;border:1px solid #3a3a3a;color:#fff;padding:14px;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:.9rem;outline:none;resize:vertical;line-height:1.7;transition:border-color .2s;"
-        onfocus="this.style.borderColor='#9090ff'"
-        onblur="this.style.borderColor='#3a3a3a'"></textarea>
-      <div style="font-size:.74rem;color:#444;margin-top:6px;">
-        💡 Whisper analizza l'audio e assegna i timing — le tue parole appaiono esatte nel video
-      </div>
+        placeholder="Incolla qui il testo completo...
 
-      <!-- Regolazione anticipo/ritardo -->
-      <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <span style="font-size:.78rem;color:#777;white-space:nowrap;">⏱ Anticipo/Ritardo:</span>
-        <input type="range" id="lyricsOffset" min="-2.0" max="2.0" step="0.1" value="-0.3"
-          style="flex:1;accent-color:#9090ff;min-width:120px;"
+Strofa 1
+Prima riga della strofa
+Seconda riga della strofa
+
+Ritornello
+Il ritornello della canzone"></textarea>
+      <div style="font-size:.74rem;color:#444;margin-top:8px;">
+        💡 Una riga = un sottotitolo · Le righe vuote vengono ignorate
+      </div>
+      <div class="offset-row">
+        <span>⏱ Anticipo / Ritardo:</span>
+        <input type="range" id="lyricsOffset" min="-3.0" max="3.0" step="0.1" value="-0.3"
           oninput="document.getElementById('offsetVal').textContent=
             (parseFloat(this.value)>=0?'+':'')+parseFloat(this.value).toFixed(1)+'s'">
-        <span id="offsetVal" style="font-size:.82rem;color:#9090ff;width:40px;text-align:right;">-0.3s</span>
-        <span style="font-size:.72rem;color:#444;">
-          &larr; anticipa &nbsp;|&nbsp; ritarda &rarr;
-        </span>
+        <span id="offsetVal">-0.3s</span>
+        <span style="font-size:.72rem;color:#444;">← anticipa &nbsp;|&nbsp; ritarda →</span>
       </div>
     </div>
 
@@ -261,7 +244,6 @@ footer{text-align:center;padding:28px;color:#2a2a2a;font-size:.8rem;border-top:1
     <span class="empty-icon">🎵</span>
     Nessun video — crea il primo!
   </div>
-
 </div>
 
 <footer>© 2026 – My Music Studio · Whisper by OpenAI · Transformers.js by Hugging Face</footer>
@@ -274,7 +256,7 @@ import { pipeline, env }
 env.allowLocalModels = false;
 env.useBrowserCache  = true;
 
-/* ── DOM refs ── */
+/* ══ DOM ══ */
 const statusPill    = document.getElementById('statusPill');
 const statusPillTxt = document.getElementById('statusPillTxt');
 const modelDl       = document.getElementById('modelDl');
@@ -284,64 +266,58 @@ const dlFill        = document.getElementById('dlFill');
 const dlFiles       = document.getElementById('dlFiles');
 const transLog      = document.getElementById('transLog');
 
-/* ── Pill status ── */
-function setPill(state, txt) {
-  statusPill.className = 'status-pill ' + state;
-  statusPillTxt.textContent = txt;
+function setPill(state,txt){
+  statusPill.className='status-pill '+state;
+  statusPillTxt.textContent=txt;
 }
 
-/* ── Progresso download ── */
-const FILE_W = {
-  'encoder_model.onnx': 30,
-  'decoder_model_merged.onnx': 20,
-  'tokenizer.json': 1,
-  'config.json': 1,
-  'tokenizer_config.json': 1,
-  'preprocessor_config.json': 1,
+/* ══ DOWNLOAD PROGRESS ══ */
+const FILE_W={
+  'encoder_model.onnx':30,'decoder_model_merged.onnx':20,
+  'tokenizer.json':1,'config.json':1,
+  'tokenizer_config.json':1,'preprocessor_config.json':1
 };
-const TOT_W = Object.values(FILE_W).reduce((a,b)=>a+b,0);
-let loadedW = 0;
-const filesDone = new Set();
+const TOT_W=Object.values(FILE_W).reduce((a,b)=>a+b,0);
+let loadedW=0;
+const filesDone=new Set();
+function safeId(n){return 'fr-'+n.replace(/[^a-z0-9]/gi,'_');}
 
-function onProgress(p) {
-  if (p.status === 'initiate') {
-    modelDl.style.display = 'block';
-    addFRow(p.file||'', 'f-active', '⏳ '+(p.file||''));
+function onProgress(p){
+  if(p.status==='initiate'){
+    modelDl.style.display='block';
+    addFRow(p.file||'','f-active','⏳ '+(p.file||''));
   }
-  if (p.status === 'progress') {
-    const pct = p.progress ? Math.floor(p.progress) : 0;
-    updFRow(p.file||'', pct+'%');
-    const contrib = (pct/100) * (FILE_W[p.file||'']||0.5);
-    const tot = Math.min(Math.floor(((loadedW+contrib)/TOT_W)*100), 99);
-    dlFill.style.width = tot+'%';
-    dlPct.textContent  = tot+'%';
-    dlLabel.textContent = 'Download: '+(p.file||'')+' — '+pct+'%';
-    setPill('loading', 'Download… '+tot+'%');
+  if(p.status==='progress'){
+    const pct=p.progress?Math.floor(p.progress):0;
+    updFRow(p.file||'',pct+'%');
+    const contrib=(pct/100)*(FILE_W[p.file||'']||0.5);
+    const tot=Math.min(Math.floor(((loadedW+contrib)/TOT_W)*100),99);
+    dlFill.style.width=tot+'%';dlPct.textContent=tot+'%';
+    dlLabel.textContent='Download: '+(p.file||'')+' — '+pct+'%';
+    setPill('loading','Download… '+tot+'%');
   }
-  if (p.status === 'done') {
-    const f = p.file||'';
-    if (!filesDone.has(f)) { filesDone.add(f); loadedW += FILE_W[f]||0.5; }
+  if(p.status==='done'){
+    const f=p.file||'';
+    if(!filesDone.has(f)){filesDone.add(f);loadedW+=FILE_W[f]||0.5;}
     doneFRow(f);
   }
 }
-function addFRow(name,cls,txt) {
-  const id='fr-'+name.replace(/[^a-z0-9]/gi,'_');
-  if(document.getElementById(id)) return;
+function addFRow(name,cls,txt){
+  const id=safeId(name);
+  if(document.getElementById(id))return;
   const d=document.createElement('div');
-  d.id=id; d.className=cls; d.textContent=txt;
-  dlFiles.appendChild(d); dlFiles.scrollTop=dlFiles.scrollHeight;
+  d.id=id;d.className=cls;d.textContent=txt;
+  dlFiles.appendChild(d);dlFiles.scrollTop=dlFiles.scrollHeight;
 }
-function updFRow(name,sfx) {
-  const el=document.getElementById('fr-'+name.replace(/[^a-z0-9]/gi,'_'));
-  if(el) el.textContent='⏳ '+name+' — '+sfx;
+function updFRow(name,sfx){
+  const el=document.getElementById(safeId(name));
+  if(el)el.textContent='⏳ '+name+' — '+sfx;
 }
-function doneFRow(name) {
-  const el=document.getElementById('fr-'+name.replace(/[^a-z0-9]/gi,'_'));
+function doneFRow(name){
+  const el=document.getElementById(safeId(name));
   if(el){el.className='f-done';el.textContent='✅ '+name;}
 }
-
-/* ── Log trascrizione ── */
-function logT(msg) {
+function logT(msg){
   transLog.style.display='block';
   const d=document.createElement('div');
   d.textContent=msg;
@@ -349,252 +325,286 @@ function logT(msg) {
   transLog.scrollTop=transLog.scrollHeight;
 }
 
-/* ════════════════════════════════════════════
-   CARICAMENTO WHISPER BASE
-   Il segreto per trascrivere TUTTO il testo:
-   - chunk_length_s: 30  → processa 30s alla volta
-   - stride_length_s: 5  → 5s di overlap tra chunk
-   - condition_on_previous_text: true → contesto
-   - Nessun max_new_tokens basso che taglia il testo
-════════════════════════════════════════════ */
-let pipe = null, isLoading = false;
-
-async function getModel() {
-  if (pipe) return pipe;
-  if (isLoading) {
-    // Aspetta che il loading finisca
-    await new Promise(res => {
-      const t = setInterval(()=>{ if(!isLoading){clearInterval(t);res();} },200);
-    });
+/* ══ WHISPER MODEL ══ */
+let pipe=null,isLoading=false;
+async function getModel(){
+  if(pipe)return pipe;
+  if(isLoading){
+    await new Promise(res=>{const t=setInterval(()=>{if(!isLoading){clearInterval(t);res();}},200);});
     return pipe;
   }
-  isLoading = true;
-  setPill('loading', 'Caricamento Whisper Base…');
-  modelDl.style.display = 'block';
-
-  pipe = await pipeline(
-    'automatic-speech-recognition',
-    'onnx-community/whisper-base',   // Base: migliore qualità, trascrive tutto
-    {
-      dtype: {
-        encoder_model:        'fp32',
-        decoder_model_merged: 'q4',  // quantizzato 4-bit per velocità
-      },
-      progress_callback: onProgress
-    }
-  );
-
-  dlFill.style.width = '100%';
-  dlPct.textContent  = '100%';
-  dlLabel.textContent = '✅ Modello pronto — in cache per la prossima volta';
-  setPill('ready', '✅ Whisper Base pronto (offline)');
-  isLoading = false;
+  isLoading=true;
+  setPill('loading','Caricamento Whisper Base…');
+  modelDl.style.display='block';
+  pipe=await pipeline('automatic-speech-recognition','onnx-community/whisper-base',{
+    dtype:{encoder_model:'fp32',decoder_model_merged:'q4'},
+    progress_callback:onProgress
+  });
+  dlFill.style.width='100%';dlPct.textContent='100%';
+  dlLabel.textContent='✅ Modello pronto — in cache per la prossima volta';
+  setPill('ready','✅ Whisper Base pronto (offline)');
+  isLoading=false;
   return pipe;
 }
 
-/* ════════════════════════════════════════════
-   TRASCRIZIONE COMPLETA
-   Chiave: processiamo l'audio a pezzi con overlap
-   per garantire che ritornello e bridge siano inclusi
-════════════════════════════════════════════ */
-async function transcribeAll(audioFile, language) {
-  const model = await getModel();
-
+/* ══ TRASCRIZIONE COMPLETA chunk per chunk ══ */
+async function transcribeAll(audioFile,language){
+  const model=await getModel();
   logT('🎵 Lettura file audio…');
-
-  // Decode audio → Float32Array 16kHz mono
-  const arrayBuf  = await audioFile.arrayBuffer();
-  const actx      = new (window.AudioContext||window.webkitAudioContext)({ sampleRate: 16000 });
-  const decoded   = await actx.decodeAudioData(arrayBuf);
+  const arrayBuf=await audioFile.arrayBuffer();
+  const actx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
+  const decoded=await actx.decodeAudioData(arrayBuf);
   await actx.close();
+  const totalSec=decoded.duration;
+  const sr=decoded.sampleRate;
+  const channelData=decoded.getChannelData(0);
+  logT('⏱ Durata: '+Math.floor(totalSec)+'s — trascrizione chunk per chunk…');
 
-  const totalSec    = decoded.duration;
-  const sampleRate  = decoded.sampleRate; // 16000
-  const channelData = decoded.getChannelData(0);
+  const CHUNK_SEC=28,STRIDE_SEC=4;
+  const CHUNK_SAMP=CHUNK_SEC*sr,STRIDE_SAMP=STRIDE_SEC*sr;
+  const totalChunks=Math.ceil(totalSec/(CHUNK_SEC-STRIDE_SEC));
+  const allSegs=[];
+  let chunkStart=0,chunkIdx=0;
 
-  logT('⏱ Durata: ' + Math.floor(totalSec) + 's — trascrizione chunk per chunk…');
-
-  // ── Parametri chunking ──────────────────────
-  const CHUNK_SEC  = 28;   // secondi per chunk (Whisper max=30s)
-  const STRIDE_SEC = 4;    // overlap per non perdere parole al confine
-  const CHUNK_SAMP = CHUNK_SEC  * sampleRate;
-  const STRIDE_SAMP= STRIDE_SEC * sampleRate;
-
-  const allSegments = [];
-  let chunkStart    = 0;
-  let chunkIdx      = 0;
-  const totalChunks = Math.ceil(totalSec / (CHUNK_SEC - STRIDE_SEC));
-
-  while (chunkStart < channelData.length) {
+  while(chunkStart<channelData.length){
     chunkIdx++;
-    const chunkEnd   = Math.min(chunkStart + CHUNK_SAMP, channelData.length);
-    const chunkData  = channelData.slice(chunkStart, chunkEnd);
-    const timeOffset = chunkStart / sampleRate;
-
-    logT('🔄 Chunk ' + chunkIdx + '/' + totalChunks +
-         ' — ' + Math.floor(timeOffset) + 's → ' +
-         Math.floor(timeOffset + chunkData.length/sampleRate) + 's');
-
-    const opts = {
-      task:             'transcribe',
-      return_timestamps: true,
-      // NON limitare max_new_tokens — lascia Whisper trascrivere tutto
-    };
-    if (language && language !== 'auto') opts.language = language;
-
-    const result = await model(chunkData, opts);
-
-    // Aggiungi l'offset temporale ai segmenti del chunk
-    const chunks = result.chunks || [];
-    for (const c of chunks) {
-      const seg = {
-        start: (c.timestamp[0] ?? 0) + timeOffset,
-        end:   (c.timestamp[1] ?? ((c.timestamp[0]??0)+3)) + timeOffset,
-        text:  c.text.trim()
+    const chunkEnd=Math.min(chunkStart+CHUNK_SAMP,channelData.length);
+    const chunkData=channelData.slice(chunkStart,chunkEnd);
+    const timeOff=chunkStart/sr;
+    logT('🔄 Chunk '+chunkIdx+'/'+totalChunks+' — '+Math.floor(timeOff)+'s → '+Math.floor(timeOff+chunkData.length/sr)+'s');
+    const opts={task:'transcribe',return_timestamps:true};
+    if(language&&language!=='auto')opts.language=language;
+    const result=await model(chunkData,opts);
+    for(const c of (result.chunks||[])){
+      const seg={
+        start:(c.timestamp[0]??0)+timeOff,
+        end:(c.timestamp[1]??((c.timestamp[0]??0)+3))+timeOff,
+        text:(c.text||'').trim()
       };
-      // Evita duplicati dovuti all'overlap
-      if (seg.text && !allSegments.some(s =>
-          Math.abs(s.start - seg.start) < 1 && s.text === seg.text)) {
-        allSegments.push(seg);
-        logT('📝 [' + seg.start.toFixed(1) + 's] ' + seg.text);
+      if(seg.text&&!allSegs.some(s=>Math.abs(s.start-seg.start)<1&&s.text===seg.text)){
+        allSegs.push(seg);
+        logT('📝 ['+seg.start.toFixed(1)+'s] '+seg.text);
       }
     }
-
-    // Avanza al prossimo chunk (con overlap)
-    const advance = CHUNK_SAMP - STRIDE_SAMP;
-    chunkStart += advance;
-
-    // Se il chunk rimanente è troppo piccolo, fermati
-    if (channelData.length - chunkStart < sampleRate * 2) break;
+    chunkStart+=CHUNK_SAMP-STRIDE_SAMP;
+    if(channelData.length-chunkStart<sr*2)break;
   }
-
-  // Ordina per timestamp
-  allSegments.sort((a, b) => a.start - b.start);
-
-  logT('✅ Trascrizione completa: ' + allSegments.length + ' segmenti');
-  logT('📊 Copertura: 0s → ' + Math.floor(totalSec) + 's');
-
-  return allSegments;
+  allSegs.sort((a,b)=>a.start-b.start);
+  logT('✅ Trascrizione: '+allSegs.length+' segmenti (0s→'+Math.floor(totalSec)+'s)');
+  return allSegs;
 }
 
-/* ════════════════════════════════════════════
-   CANVAS
-════════════════════════════════════════════ */
-function getSub(segs, t) {
-  for (const s of segs)
-    if (t >= s.start && t < s.end) return s.text;
+/* ══════════════════════════════════════════════════════════════
+   SINCRONIZZAZIONE TESTO MANUALE
+   ─────────────────────────────────────────────────────────────
+   CAUSA DELL'ERRORE "Cannot read properties of undefined (reading 'time')":
+   
+   Il bug era in questa riga:
+     const searchEnd = Math.min(cursor + windowSize * 4, total - windowSize + 1);
+   
+   Quando cursor è vicino alla fine dell'array, la formula
+   "total - windowSize + 1" può diventare NEGATIVA se windowSize > total.
+   In quel caso searchEnd < cursor, il for non gira mai, bestIdx
+   rimane = cursor che può essere >= total, e wWords[bestIdx] è undefined.
+   
+   FIX APPLICATO: 3 livelli di protezione
+   1. searchEnd calcolato con Math.max per non scendere mai sotto cursor
+   2. bestIdx bloccato nell'intervallo [0, WN-1] PRIMA di accedere all'array
+   3. endIdx bloccato nell'intervallo [0, WN-1] PRIMA di accedere all'array
+══════════════════════════════════════════════════════════════ */
+function syncLyricsWithTimings(whisperSegs, rawLyrics, userOffset){
+  // Valore default e validazione
+  if(typeof userOffset !== 'number' || isNaN(userOffset)) userOffset = -0.3;
+
+  /* 1 — Righe utente */
+  const lines = rawLyrics.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+  if(!lines.length || !whisperSegs.length) return whisperSegs;
+
+  const totalDur = whisperSegs[whisperSegs.length-1].end || 180;
+
+  /* 2 — Tokenizzatore */
+  function tokenize(str){
+    return (str||'').toLowerCase()
+      .replace(/[^a-zA-ZÀ-ÿ0-9\s]/g,' ')
+      .split(/\s+/)
+      .filter(w=>w.length>1);
+  }
+
+  /* 3 — Similarità Jaccard */
+  function jaccard(a,b){
+    if(!a.length||!b.length) return 0;
+    const sa=new Set(a), sb=new Set(b);
+    let inter=0;
+    for(const w of sa) if(sb.has(w)) inter++;
+    const union=sa.size+sb.size-inter;
+    return union===0 ? 0 : inter/union;
+  }
+
+  /* 4 — Costruisce wWords: lista {word, time} da tutti i segmenti Whisper
+          PROTEZIONE: salta segmenti con timestamp non validi */
+  const wWords=[];
+  for(const seg of whisperSegs){
+    if(typeof seg.start!=='number'||typeof seg.end!=='number') continue;
+    if(isNaN(seg.start)||isNaN(seg.end)||seg.end<=seg.start) continue;
+    const toks=tokenize(seg.text||'');
+    if(!toks.length) continue;
+    const dt=(seg.end-seg.start)/toks.length;
+    toks.forEach((w,wi)=>{
+      wWords.push({word:w, time:seg.start+wi*dt});
+    });
+  }
+
+  /* 5 — Fallback se nessuna parola estratta */
+  if(!wWords.length){
+    logT('⚠️ Nessuna parola estratta da Whisper — distribuzione uniforme');
+    return lines.map((text,i)=>({
+      start: Math.max(0,(i/lines.length)*totalDur+userOffset),
+      end:   ((i+1)/lines.length)*totalDur,
+      text
+    }));
+  }
+
+  /* ── WN: lunghezza dell'array, usata per TUTTI i bounds check ── */
+  const WN = wWords.length;
+
+  /* 6 — Sliding window con TRIPLO bounds check (il cuore del fix) */
+  const result=[];
+  let cursor=0;
+
+  for(let li=0;li<lines.length;li++){
+    const lineWords=tokenize(lines[li]);
+    if(!lineWords.length) continue;
+
+    const wLen    = lineWords.length;
+    const winSize = Math.max(wLen, Math.round(wLen*1.3));
+
+    let bestScore = -1;
+    let bestIdx   = cursor; // valore iniziale sicuro (cursor è sempre valido)
+
+    /* ── FIX 1: searchEnd non scende mai sotto cursor ──
+       Prima era: Math.min(cursor + winSize*4, total - winSize + 1)
+       Problema: "total - winSize + 1" può essere negativo → searchEnd < cursor
+       Soluzione: Math.max(..., cursor) garantisce searchEnd >= cursor */
+    const searchEnd = Math.max(
+      cursor,
+      Math.min(cursor + winSize * 4, WN - 1)
+    );
+
+    for(let wi=cursor; wi<=searchEnd; wi++){
+      /* Bounds check interno per lo slice */
+      if(wi >= WN) break;
+      const sliceEnd = Math.min(wi+winSize, WN);
+      const slice    = wWords.slice(wi, sliceEnd).map(x=>x.word);
+      const score    = jaccard(lineWords, slice);
+      if(score > bestScore){ bestScore=score; bestIdx=wi; }
+    }
+
+    /* ── FIX 2: bestIdx bloccato in [0, WN-1] PRIMA dell'accesso ──
+       Senza questo: wWords[bestIdx] potrebbe essere undefined */
+    bestIdx = Math.max(0, Math.min(bestIdx, WN-1));
+
+    /* Accesso SICURO — bestIdx è validato */
+    const startTime = wWords[bestIdx].time;
+
+    /* ── FIX 3: endIdx bloccato in [0, WN-1] PRIMA dell'accesso ──
+       Senza questo: wWords[endIdx] potrebbe essere undefined */
+    const endIdx = Math.max(0, Math.min(bestIdx + winSize - 1, WN-1));
+
+    /* Accesso SICURO — endIdx è validato */
+    const endTime = wWords[endIdx].time;
+
+    /* Cursore avanza solo in avanti, mai oltre WN-1 */
+    cursor = Math.min(
+      Math.max(cursor, bestIdx + Math.floor(winSize*0.7)),
+      WN - 1
+    );
+
+    result.push({
+      start: Math.max(0, startTime + userOffset),
+      end:   Math.max(endTime, startTime + 1.5),
+      text:  lines[li]
+    });
+  }
+
+  /* 7 — Fix sovrapposizioni */
+  for(let i=0;i<result.length-1;i++){
+    if(result[i].end > result[i+1].start){
+      result[i].end = Math.max(result[i].start+0.5, result[i+1].start-0.05);
+    }
+  }
+
+  logT('🔗 '+result.length+' righe sincronizzate con i timestamp Whisper');
+  return result;
+}
+
+/* ══ CANVAS ══ */
+function getSub(segs,t){
+  for(const s of segs) if(t>=s.start&&t<s.end) return s.text;
   return '';
 }
 function roundRect(ctx,x,y,w,h,r){
   ctx.beginPath();
-  ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);
-  ctx.quadraticCurveTo(x+w,y,x+w,y+r);
-  ctx.lineTo(x+w,y+h-r);
-  ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
-  ctx.lineTo(x+r,y+h);
-  ctx.quadraticCurveTo(x,y+h,x,y+h-r);
-  ctx.lineTo(x,y+r);
-  ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);
   ctx.closePath();
 }
 function clipTxt(ctx,txt,maxW){
-  if(ctx.measureText(txt).width<=maxW) return txt;
-  while(txt.length>3&&ctx.measureText(txt+'…').width>maxW) txt=txt.slice(0,-1);
+  if(!txt)return '';
+  if(ctx.measureText(txt).width<=maxW)return txt;
+  while(txt.length>3&&ctx.measureText(txt+'…').width>maxW)txt=txt.slice(0,-1);
   return txt+'…';
 }
 function drawFrame(ctx,img,title,artist,sub){
-  const W=1280, H=720;
-
-  // ── Sfondo nero ──
-  ctx.fillStyle='#000';
-  ctx.fillRect(0,0,W,H);
-
-  // ── FOTO grande — occupa quasi tutto il video ──
-  const sc = Math.min(W/img.width, H/img.height);
-  const iw = img.width  * sc;
-  const ih = img.height * sc;
-  const ix = (W-iw)/2;
-  const iy = (H-ih)/2;
-  ctx.drawImage(img, ix, iy, iw, ih);
-
-  // ── Gradiente scuro in basso per titolo/artista ──
-  const gradBot = ctx.createLinearGradient(0, H-180, 0, H);
-  gradBot.addColorStop(0,'rgba(0,0,0,0)');
-  gradBot.addColorStop(1,'rgba(0,0,0,0.88)');
-  ctx.fillStyle = gradBot;
-  ctx.fillRect(0, H-180, W, 180);
-
-  // ── TITOLO in basso a sinistra sopra il gradiente ──
+  const W=1280,H=720;
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  const sc=Math.min(W/img.width,H/img.height);
+  const iw=img.width*sc,ih=img.height*sc;
+  const ix=(W-iw)/2,iy=(H-ih)/2;
+  ctx.drawImage(img,ix,iy,iw,ih);
+  const grad=ctx.createLinearGradient(0,H-200,0,H);
+  grad.addColorStop(0,'rgba(0,0,0,0)');
+  grad.addColorStop(1,'rgba(0,0,0,0.9)');
+  ctx.fillStyle=grad;ctx.fillRect(0,H-200,W,200);
   ctx.textAlign='left';
-  ctx.shadowColor='rgba(0,0,0,1)'; ctx.shadowBlur=14;
-  ctx.fillStyle='#ffffff';
-  ctx.font='bold 42px Arial';
-  ctx.fillText(clipTxt(ctx,title,700), 50, H-72);
-
-  // ── ARTISTA sotto il titolo ──
-  ctx.font='28px Arial';
-  ctx.fillStyle='rgba(255,255,255,0.75)';
-  ctx.fillText(clipTxt(ctx,artist,700), 50, H-36);
+  ctx.shadowColor='rgba(0,0,0,1)';ctx.shadowBlur=14;
+  ctx.fillStyle='#fff';ctx.font='bold 42px Arial';
+  ctx.fillText(clipTxt(ctx,title,700),50,H-72);
+  ctx.font='28px Arial';ctx.fillStyle='rgba(255,255,255,.75)';
+  ctx.fillText(clipTxt(ctx,artist,700),50,H-36);
   ctx.shadowBlur=0;
-
-  // ── TESTO trascritto al CENTRO della foto — overlay ──
   if(sub){
-    ctx.font='bold 46px Arial';
-    ctx.textAlign='center';
-
-    // Spezza in righe
-    const words   = sub.split(' ');
-    const maxLineW= 1100;
-    const lines   = [];
-    let   line    = '';
+    ctx.font='bold 46px Arial';ctx.textAlign='center';
+    const words=sub.split(' '),maxLW=1100;
+    const lines=[];let line='';
     for(const w of words){
-      const test = line ? line+' '+w : w;
-      if(ctx.measureText(test).width > maxLineW && line){
-        lines.push(line); line=w;
-      } else { line=test; }
+      const test=line?line+' '+w:w;
+      if(ctx.measureText(test).width>maxLW&&line){lines.push(line);line=w;}
+      else line=test;
     }
-    if(line) lines.push(line);
-
-    const lineH  = 62;
-    const totalH = lines.length * lineH;
-    // Centro verticale della foto
-    const centerY = iy + ih/2;
-    const startY  = centerY - totalH/2 + lineH*0.75;
-
-    // Sfondo scuro dietro il testo
-    const pad  = 30;
-    const maxW = Math.max(...lines.map(l=>ctx.measureText(l).width));
-    const boxW = Math.min(maxW + pad*2, 1200);
-    const boxH = totalH + pad*1.5;
-    const boxX = (W-boxW)/2;
-    const boxY = startY - lineH*0.75 - pad*0.5;
-
+    if(line)lines.push(line);
+    const lineH=62,totalH=lines.length*lineH;
+    const centerY=iy+ih/2,startY=centerY-totalH/2+lineH*0.75;
+    const pad=30;
+    const maxW=Math.max(...lines.map(l=>ctx.measureText(l).width));
+    const boxW=Math.min(maxW+pad*2,1200),boxH=totalH+pad*1.5;
     ctx.fillStyle='rgba(0,0,0,0.62)';
-    roundRect(ctx, boxX, boxY, boxW, boxH, 18);
-    ctx.fill();
-
-    // Testo con glow bianco + contorno
-    ctx.shadowColor='rgba(0,0,0,0.95)';
-    ctx.shadowBlur=18;
-    ctx.fillStyle='#ffffff';
-    ctx.strokeStyle='rgba(0,0,0,0.5)';
-    ctx.lineWidth=3;
+    roundRect(ctx,(W-boxW)/2,startY-lineH*0.75-pad*0.5,boxW,boxH,18);ctx.fill();
+    ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=18;
+    ctx.fillStyle='#fff';ctx.strokeStyle='rgba(0,0,0,.5)';ctx.lineWidth=3;
     lines.forEach((l,i)=>{
-      const ly = startY + i*lineH;
-      ctx.strokeText(clipTxt(ctx,l,1140), W/2, ly);
-      ctx.fillText(clipTxt(ctx,l,1140),   W/2, ly);
+      ctx.strokeText(clipTxt(ctx,l,1140),W/2,startY+i*lineH);
+      ctx.fillText(clipTxt(ctx,l,1140),W/2,startY+i*lineH);
     });
-    ctx.shadowBlur=0;
-    ctx.lineWidth=1;
+    ctx.shadowBlur=0;ctx.lineWidth=1;
   }
 }
 
-/* ════════════════════════════════════════════
-   INDEXEDDB
-════════════════════════════════════════════ */
+/* ══ INDEXEDDB ══ */
 let _db=null;
 function getDB(){
-  if(_db) return Promise.resolve(_db);
+  if(_db)return Promise.resolve(_db);
   return new Promise((res,rej)=>{
     const r=indexedDB.open('MusicStudioDB',2);
     r.onupgradeneeded=e=>{
@@ -630,7 +640,7 @@ async function dbGetAll(){
   });
 }
 async function dbDel(id){
-  if(!confirm('Eliminare questo video?')) return;
+  if(!confirm('Eliminare questo video?'))return;
   const db=await getDB();
   const tx=db.transaction('videos','readwrite');
   tx.objectStore('videos').delete(id);
@@ -638,7 +648,6 @@ async function dbDel(id){
 }
 window.dbDel=dbDel;
 
-/* ── Gallery ── */
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 async function loadGallery(){
   try{
@@ -651,8 +660,7 @@ async function loadGallery(){
     emp.style.display='none';gal.style.display='block';
     vs.sort((a,b)=>b.date-a.date).forEach(v=>{
       const url=URL.createObjectURL(v.blob);
-      const c=document.createElement('div');
-      c.className='video-card';
+      const c=document.createElement('div');c.className='video-card';
       c.innerHTML=`
         <video src="${url}" controls preload="metadata"></video>
         <div class="video-meta"><strong>${esc(v.title)}</strong><span>${esc(v.artist)}</span></div>
@@ -665,149 +673,28 @@ async function loadGallery(){
   }catch(e){console.warn(e);}
 }
 
-/* ════════════════════════════════════════════
-   TOGGLE LYRICS BOX
-════════════════════════════════════════════ */
+/* ══ UI HELPERS ══ */
 function toggleLyrics(){
-  const useLyrics = document.getElementById('useLyrics').checked;
-  document.getElementById('lyricsBox').style.display = useLyrics ? 'block' : 'none';
+  document.getElementById('lyricsBox').style.display=
+    document.getElementById('useLyrics').checked?'block':'none';
 }
-window.toggleLyrics = toggleLyrics;
+window.toggleLyrics=toggleLyrics;
 
-/* ════════════════════════════════════════════
-   SINCRONIZZAZIONE TESTO MANUALE + TIMING WHISPER
-   1. Whisper analizza l'audio → timestamp precisi
-   2. Prendiamo i TIMING di Whisper
-   3. Sostituiamo il TESTO con quello dell'utente
-   4. Ogni riga del testo viene abbinata ai segmenti
-════════════════════════════════════════════ */
-function syncLyricsWithTimings(whisperSegs, rawLyrics, userOffset) {
-  userOffset = userOffset || 0;
-  // ── Prepara le righe utente ──────────────────────────────────
-  const lines = rawLyrics
-    .split('\n')
-    .map(l => l.trim())
-    .filter(l => l.length > 0);
-
-  if (!lines.length) return whisperSegs;
-  if (!whisperSegs.length) return [];
-
-  // ── Estrai parole normalizzate da una stringa ─────────────────
-  function tokenize(str) {
-    return str.toLowerCase()
-      .replace(/[^a-zA-ZÀ-ÿ0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter(w => w.length > 1);
-  }
-
-  // ── Similarità Jaccard tra due insiemi di parole ─────────────
-  // Restituisce 0..1 (1 = identici)
-  function similarity(wordsA, wordsB) {
-    if (!wordsA.length || !wordsB.length) return 0;
-    const setA = new Set(wordsA);
-    const setB = new Set(wordsB);
-    let inter = 0;
-    for (const w of setA) if (setB.has(w)) inter++;
-    const union = setA.size + setB.size - inter;
-    return union === 0 ? 0 : inter / union;
-  }
-
-  // ── Costruisce testo continuo di Whisper con timestamp per parola ──
-  // Whisper dà segmenti con start/end — distribuiamo le parole
-  // uniformemente all'interno di ogni segmento
-  const whisperWords = []; // { word, time }
-  for (const seg of whisperSegs) {
-    const words = tokenize(seg.text);
-    if (!words.length) continue;
-    const dt = (seg.end - seg.start) / words.length;
-    words.forEach((w, wi) => {
-      whisperWords.push({ word: w, time: seg.start + wi * dt });
-    });
-  }
-
-  if (!whisperWords.length) {
-    // Fallback: distribuzione uniforme sulla durata totale
-    const totalDur = whisperSegs[whisperSegs.length-1].end;
-    return lines.map((text, i) => ({
-      start: (i / lines.length) * totalDur,
-      end:   ((i + 1) / lines.length) * totalDur,
-      text
-    }));
-  }
-
-  // ── Per ogni riga utente: trova la finestra temporale ottimale ──
-  // Usiamo una sliding window: per ogni riga confrontiamo le sue
-  // parole con blocchi consecutivi di parole Whisper e prendiamo
-  // il blocco con la maggiore similarità
-  const result  = [];
-  let   cursor  = 0; // indice minimo in whisperWords (non tornare indietro)
-
-  for (let li = 0; li < lines.length; li++) {
-    const lineWords = tokenize(lines[li]);
-    if (!lineWords.length) continue;
-
-    const wLen   = lineWords.length;
-    const total  = whisperWords.length;
-
-    // Stima quante parole Whisper corrispondono a questa riga
-    const windowSize = Math.max(wLen, Math.round(wLen * 1.3));
-
-    let bestScore = -1;
-    let bestIdx   = cursor;
-
-    // Cerca nella finestra da cursor fino a fine (con limite per efficienza)
-    const searchEnd = Math.min(cursor + windowSize * 4, total - windowSize + 1);
-    for (let wi = cursor; wi <= searchEnd && wi < total; wi++) {
-      const slice = whisperWords.slice(wi, wi + windowSize).map(x => x.word);
-      const score = similarity(lineWords, slice);
-      if (score > bestScore) {
-        bestScore = score;
-        bestIdx   = wi;
-      }
-    }
-
-    // Timestamp di inizio = prima parola del blocco trovato
-    const startTime = whisperWords[bestIdx].time;
-    // Timestamp di fine = ultima parola del blocco
-    const endIdx    = Math.min(bestIdx + windowSize - 1, total - 1);
-    const endTime   = whisperWords[endIdx].time;
-
-    // Avanza il cursore SOLO in avanti (garanzia di ordine cronologico)
-    cursor = Math.max(cursor, bestIdx + Math.floor(windowSize * 0.7));
-
-    result.push({
-      start: Math.max(0, startTime + userOffset),
-      end:   Math.max(endTime, startTime + 1.5),
-      text:  lines[li]
-    });
-  }
-
-  // ── Fix sovrapposizioni: ogni riga finisce dove inizia la prossima ──
-  for (let i = 0; i < result.length - 1; i++) {
-    if (result[i].end > result[i+1].start) {
-      result[i].end = result[i+1].start - 0.05;
-    }
-  }
-
-  return result;
-}
-
-/* ── UI helpers ── */
 function updateLabel(iId,lId,nId){
   const f=document.getElementById(iId).files[0];
-  if(!f) return;
+  if(!f)return;
   document.getElementById(lId).textContent='✅ '+f.name;
   document.getElementById(nId).textContent=f.name;
 }
 window.updateLabel=updateLabel;
 
 function setStatus(txt,pct,sub){
-  if(txt!=null) document.getElementById('statusText').textContent=txt;
+  if(txt!=null)document.getElementById('statusText').textContent=txt;
   if(pct!=null){
     document.getElementById('progressFill').style.width=pct+'%';
     document.getElementById('pctText').textContent=Math.floor(pct)+'%';
   }
-  if(sub!=null) document.getElementById('statusSub').textContent=sub;
+  if(sub!=null)document.getElementById('statusSub').textContent=sub;
 }
 function resetUI(){
   document.getElementById('createBtn').disabled=false;
@@ -822,7 +709,6 @@ function resetUI(){
   document.getElementById('audioLabel').textContent='🎵 Scegli audio';
   document.getElementById('coverName').textContent='Nessun file scelto';
   document.getElementById('audioName').textContent='Nessun file scelto';
-  // Reset testo manuale
   document.getElementById('lyricsText').value='';
   document.getElementById('useLyrics').checked=false;
   document.getElementById('lyricsBox').style.display='none';
@@ -836,26 +722,22 @@ function readAs(file,mode){
   });
 }
 
-/* ════════════════════════════════════════════
-   CREAZIONE VIDEO
-════════════════════════════════════════════ */
-document.getElementById('createBtn').addEventListener('click', async()=>{
-  const title      =document.getElementById('title').value.trim();
-  const artist     =document.getElementById('artist').value.trim();
-  const coverFile  =document.getElementById('coverFile').files[0];
-  const audioFile  =document.getElementById('audioFile').files[0];
-  const useWhisper =document.getElementById('useWhisper').checked;
-  const useLyrics  =document.getElementById('useLyrics').checked;
-  const rawLyrics  =document.getElementById('lyricsText').value.trim();
-  const lang       =document.getElementById('songLang').value;
+/* ══ CREAZIONE VIDEO ══ */
+document.getElementById('createBtn').addEventListener('click',async()=>{
+  const title     =document.getElementById('title').value.trim();
+  const artist    =document.getElementById('artist').value.trim();
+  const coverFile =document.getElementById('coverFile').files[0];
+  const audioFile =document.getElementById('audioFile').files[0];
+  const useWhisper=document.getElementById('useWhisper').checked;
+  const useLyrics =document.getElementById('useLyrics').checked;
+  const rawLyrics =document.getElementById('lyricsText').value.trim();
+  const lang      =document.getElementById('songLang').value;
 
   if(!title||!artist||!coverFile||!audioFile){
-    alert('Compila tutti i campi e carica copertina + audio.');
-    return;
+    alert('Compila tutti i campi e carica copertina + audio.');return;
   }
-  if(useLyrics && !rawLyrics){
-    alert('Hai selezionato "Testo manuale" ma non hai incollato il testo!');
-    return;
+  if(useLyrics&&!rawLyrics){
+    alert('Hai selezionato "Testo manuale" ma il campo è vuoto!');return;
   }
 
   document.getElementById('createBtn').disabled=true;
@@ -864,85 +746,72 @@ document.getElementById('createBtn').addEventListener('click', async()=>{
 
   let drawLoop=null,audioCtx=null,stopped=false;
   function doStop(rec){
-    if(stopped) return; stopped=true;
+    if(stopped)return;stopped=true;
     if(drawLoop){clearInterval(drawLoop);drawLoop=null;}
     setStatus('Finalizzazione…',99,'');
     if(rec.state==='recording'){
       rec.requestData();
-      setTimeout(()=>{
-        try{rec.stop();}catch(e){}
-        if(audioCtx) audioCtx.close().catch(()=>{});
-      },700);
+      setTimeout(()=>{try{rec.stop();}catch(e){}if(audioCtx)audioCtx.close().catch(()=>{});},700);
     }
   }
 
   try{
-    setStatus('Database…',3); await getDB();
+    setStatus('Database…',3);await getDB();
 
-    // WHISPER — serve per i timestamp (sia in auto che con testo manuale)
     let segs=[];
-    const needWhisper = useWhisper || useLyrics;
-    if(needWhisper){
+    if(useWhisper||useLyrics){
       setStatus('Caricamento Whisper…',5,'Prima volta: ~75 MB, poi in cache');
       try{
-        const whisperSegs = await transcribeAll(audioFile, lang);
-        if(useLyrics && rawLyrics){
-          // MODALITÀ TESTO PRECISO: usa le tue parole + timing di Whisper
-          setStatus('Sincronizzazione testo…',18,'Abbinamento parole ai timestamp…');
-          const offsetEl = document.getElementById('lyricsOffset');
-          const userOffset = offsetEl ? parseFloat(offsetEl.value) : -0.3;
-          segs = syncLyricsWithTimings(whisperSegs, rawLyrics, userOffset);
-          logT('✅ Testo manuale sincronizzato: '+segs.length+' righe');
+        const wSegs=await transcribeAll(audioFile,lang);
+        if(useLyrics&&rawLyrics){
+          setStatus('Sincronizzazione…',18,'Abbinamento righe ai timestamp…');
+          const offsetEl=document.getElementById('lyricsOffset');
+          const userOffset=offsetEl?parseFloat(offsetEl.value)||0:-0.3;
+          segs=syncLyricsWithTimings(wSegs,rawLyrics,userOffset);
+          logT('✅ '+segs.length+' righe sincronizzate');
           segs.slice(0,4).forEach(s=>logT('  ['+s.start.toFixed(1)+'s] '+s.text));
-        } else {
-          // MODALITÀ WHISPER AUTOMATICO
-          segs = whisperSegs;
+        }else{
+          segs=wSegs;
           logT('✅ Trascrizione automatica: '+segs.length+' segmenti');
         }
-        setStatus('Sincronizzazione OK!',22,segs.length+' righe pronte');
+        setStatus('Pronto!',22,segs.length+' righe');
         await new Promise(r=>setTimeout(r,400));
       }catch(e){
-        console.warn(e); logT('⚠️ '+e.message);
+        console.warn(e);logT('⚠️ '+e.message);
         if(!confirm('Errore Whisper:\n"'+e.message+'"\n\nContinuare senza sottotitoli?')){
-          resetUI(); return;
+          resetUI();return;
         }
         segs=[];
       }
     }
 
-    // Immagine
     setStatus('Caricamento immagine…',24);
     const imgB64=await readAs(coverFile,'dataurl');
     const img=new Image();
     await new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error('Immagine non valida'));img.src=imgB64;});
 
-    // Audio
     setStatus('Decodifica audio…',30);
     const aBuf=await readAs(audioFile,'buffer');
     audioCtx=new (window.AudioContext||window.webkitAudioContext)();
     const decoded=await audioCtx.decodeAudioData(aBuf);
     const duration=decoded.duration;
 
-    // Canvas
     const canvas=document.createElement('canvas');
     canvas.width=1280;canvas.height=720;
     const ctx2d=canvas.getContext('2d');
     drawFrame(ctx2d,img,title,artist,'');
 
-    // Stream
     const stream=canvas.captureStream(30);
     if(!stream||!stream.getVideoTracks().length)
       throw new Error('captureStream() non supportato — usa Chrome o Edge.');
 
-    // Audio routing
     const bufSrc=audioCtx.createBufferSource();
     bufSrc.buffer=decoded;
     const dest=audioCtx.createMediaStreamDestination();
     bufSrc.connect(dest);
     const aTrack=dest.stream.getAudioTracks()[0];
-    if(aTrack) stream.addTrack(aTrack);
+    if(aTrack)stream.addTrack(aTrack);
 
-    // Recorder
     const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm']
       .find(m=>MediaRecorder.isTypeSupported(m))||'video/webm';
     const rec=new MediaRecorder(stream,{mimeType:mime});
@@ -951,7 +820,7 @@ document.getElementById('createBtn').addEventListener('click', async()=>{
     rec.onstop=async()=>{
       setStatus('Salvataggio…',99,'');
       try{
-        if(!chunks.length) throw new Error('Nessun dato — usa Chrome o Edge.');
+        if(!chunks.length)throw new Error('Nessun dato — usa Chrome o Edge.');
         const blob=new Blob(chunks,{type:'video/webm'});
         await dbSave(blob,title,artist);
         setStatus('✅ Video salvato!',100,'');
@@ -965,32 +834,29 @@ document.getElementById('createBtn').addEventListener('click', async()=>{
     bufSrc.start(0);
 
     drawLoop=setInterval(()=>{
-      if(stopped) return;
+      if(stopped)return;
       const el=audioCtx.currentTime-t0;
       const pct=Math.min(32+(el/duration)*66,98);
       setStatus('Registrazione…',pct,Math.floor(el)+'s / '+Math.floor(duration)+'s');
       drawFrame(ctx2d,img,title,artist,getSub(segs,el));
-      if(el>=duration) doStop(rec);
+      if(el>=duration)doStop(rec);
     },50);
 
     bufSrc.onended=()=>doStop(rec);
 
   }catch(err){
-    if(drawLoop) clearInterval(drawLoop);
-    if(audioCtx) audioCtx.close().catch(()=>{});
+    if(drawLoop)clearInterval(drawLoop);
+    if(audioCtx)audioCtx.close().catch(()=>{});
     console.error(err);
     alert('Errore: '+err.message);
     resetUI();
   }
 });
 
-/* Avvio */
-getDB()
-  .then(()=>loadGallery())
-  .catch(err=>{
-    document.getElementById('empty').innerHTML=
-      '<span class="empty-icon">⚠️</span>IndexedDB non disponibile.<br>Usa Chrome o Edge.';
-  });
+getDB().then(()=>loadGallery()).catch(()=>{
+  document.getElementById('empty').innerHTML=
+    '<span class="empty-icon">⚠️</span>IndexedDB non disponibile.<br>Usa Chrome o Edge.';
+});
 </script>
 </body>
 </html>
