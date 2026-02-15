@@ -413,127 +413,161 @@ async function transcribeAll(audioFile,language){
    3. endIdx bloccato nell'intervallo [0, WN-1] PRIMA di accedere all'array
 ══════════════════════════════════════════════════════════════ */
 function syncLyricsWithTimings(whisperSegs, rawLyrics, userOffset){
-  // Valore default e validazione
   if(typeof userOffset !== 'number' || isNaN(userOffset)) userOffset = -0.3;
 
-  /* 1 — Righe utente */
-  const lines = rawLyrics.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
-  if(!lines.length || !whisperSegs.length) return whisperSegs;
+  /* ══════════════════════════════════════════════════════════════
+     PARSING DEL TESTO — SUPPORTO TIMESTAMP MANUALI
+     
+     Formato supportato:
+       [0:14] testo della riga     → timestamp mm:ss esplicito
+       [1:32] testo della riga     → timestamp mm:ss esplicito
+       testo senza timestamp       → distribuzione automatica
+     
+     Esempio misto:
+       [0:02] yeah yeah            → appare a 2s
+       [0:14] We started like...   → appare a 14s
+       Laughing in the rain        → distribuita automaticamente
+       [1:45] So I'm walking...    → appare a 105s
+  ══════════════════════════════════════════════════════════════ */
 
-  const totalDur = whisperSegs[whisperSegs.length-1].end || 180;
-
-  /* 2 — Tokenizzatore */
-  function tokenize(str){
-    return (str||'').toLowerCase()
-      .replace(/[^a-zA-ZÀ-ÿ0-9\s]/g,' ')
-      .split(/\s+/)
-      .filter(w=>w.length>1);
+  /* 1 — Parsing righe con timestamp opzionale */
+  function parseTimestamp(str){
+    // Formato [m:ss] o [mm:ss] o [h:mm:ss]
+    const m = str.match(/^\[(\d+):(\d{2})(?::(\d{2}))?\]\s*/);
+    if(!m) return null;
+    const h = m[3] ? parseInt(m[1]) : 0;
+    const min = m[3] ? parseInt(m[2]) : parseInt(m[1]);
+    const sec = m[3] ? parseInt(m[3]) : parseInt(m[2]);
+    return h*3600 + min*60 + sec;
   }
 
-  /* 3 — Similarità Jaccard */
-  function jaccard(a,b){
-    if(!a.length||!b.length) return 0;
-    const sa=new Set(a), sb=new Set(b);
-    let inter=0;
-    for(const w of sa) if(sb.has(w)) inter++;
-    const union=sa.size+sb.size-inter;
-    return union===0 ? 0 : inter/union;
-  }
+  const rawLines = rawLyrics.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+  if(!rawLines.length || !whisperSegs.length) return whisperSegs;
 
-  /* 4 — Costruisce wWords: lista {word, time} da tutti i segmenti Whisper
-          PROTEZIONE: salta segmenti con timestamp non validi */
-  const wWords=[];
-  for(const seg of whisperSegs){
-    if(typeof seg.start!=='number'||typeof seg.end!=='number') continue;
-    if(isNaN(seg.start)||isNaN(seg.end)||seg.end<=seg.start) continue;
-    const toks=tokenize(seg.text||'');
-    if(!toks.length) continue;
-    const dt=(seg.end-seg.start)/toks.length;
-    toks.forEach((w,wi)=>{
-      wWords.push({word:w, time:seg.start+wi*dt});
-    });
-  }
+  /* 2 — Separa righe con timestamp da quelle senza */
+  const parsed = rawLines.map(line => {
+    const ts = parseTimestamp(line);
+    const text = ts !== null
+      ? line.replace(/^\[\d+:\d{2}(?::\d{2})?\]\s*/, '').trim()
+      : line;
+    return { ts, text };
+  }).filter(p => p.text.length > 0);
 
-  /* 5 — Fallback se nessuna parola estratta */
-  if(!wWords.length){
-    logT('⚠️ Nessuna parola estratta da Whisper — distribuzione uniforme');
-    return lines.map((text,i)=>({
-      start: Math.max(0,(i/lines.length)*totalDur+userOffset),
-      end:   ((i+1)/lines.length)*totalDur,
-      text
+  /* 3 — Durata totale dell'audio da Whisper */
+  const validSegs = whisperSegs.filter(s=>
+    typeof s.start==='number' && typeof s.end==='number' &&
+    !isNaN(s.start) && !isNaN(s.end) && s.end > s.start
+  );
+  const totalDur = validSegs.length ? validSegs[validSegs.length-1].end : 180;
+
+  /* 4 — MODALITÀ TIMESTAMP MANUALI:
+     Se almeno una riga ha un timestamp esplicito,
+     usiamo i timestamp come "ancore" e distribuiamo
+     le righe senza timestamp tra le ancore. */
+  const hasTimestamps = parsed.some(p => p.ts !== null);
+
+  const result = [];
+
+  if(hasTimestamps){
+    /* ── Algoritmo con ancore temporali ──
+       1. Le righe con [mm:ss] hanno timestamp fisso
+       2. Le righe senza timestamp vengono distribuite
+          uniformemente tra l'ancora precedente e quella successiva
+    */
+
+    // Prima passata: assegna timestamp alle ancore
+    // alle righe senza timestamp assegna null temporaneamente
+    const withAnchors = parsed.map((p,i) => ({
+      text:  p.text,
+      start: p.ts !== null ? p.ts : null,
+      idx:   i
     }));
-  }
 
-  /* ── WN: lunghezza dell'array, usata per TUTTI i bounds check ── */
-  const WN = wWords.length;
+    // Seconda passata: interpola le righe null
+    // tra le ancore
+    for(let i=0; i<withAnchors.length; i++){
+      if(withAnchors[i].start !== null) continue;
 
-  /* 6 — Sliding window con TRIPLO bounds check (il cuore del fix) */
-  const result=[];
-  let cursor=0;
+      // Trova ancora precedente
+      let prevTs = 0, prevIdx = -1;
+      for(let j=i-1; j>=0; j--){
+        if(withAnchors[j].start !== null){ prevTs=withAnchors[j].start; prevIdx=j; break; }
+      }
 
-  for(let li=0;li<lines.length;li++){
-    const lineWords=tokenize(lines[li]);
-    if(!lineWords.length) continue;
+      // Trova ancora successiva
+      let nextTs = totalDur, nextIdx = withAnchors.length;
+      for(let j=i+1; j<withAnchors.length; j++){
+        if(withAnchors[j].start !== null){ nextTs=withAnchors[j].start; nextIdx=j; break; }
+      }
 
-    const wLen    = lineWords.length;
-    const winSize = Math.max(wLen, Math.round(wLen*1.3));
+      // Quante righe senza timestamp in questo gap?
+      const gapCount = nextIdx - prevIdx - 1;
+      const posInGap = i - prevIdx;
+      const gapDur   = nextTs - prevTs;
 
-    let bestScore = -1;
-    let bestIdx   = cursor; // valore iniziale sicuro (cursor è sempre valido)
-
-    /* ── FIX 1: searchEnd non scende mai sotto cursor ──
-       Prima era: Math.min(cursor + winSize*4, total - winSize + 1)
-       Problema: "total - winSize + 1" può essere negativo → searchEnd < cursor
-       Soluzione: Math.max(..., cursor) garantisce searchEnd >= cursor */
-    const searchEnd = Math.max(
-      cursor,
-      Math.min(cursor + winSize * 4, WN - 1)
-    );
-
-    for(let wi=cursor; wi<=searchEnd; wi++){
-      /* Bounds check interno per lo slice */
-      if(wi >= WN) break;
-      const sliceEnd = Math.min(wi+winSize, WN);
-      const slice    = wWords.slice(wi, sliceEnd).map(x=>x.word);
-      const score    = jaccard(lineWords, slice);
-      if(score > bestScore){ bestScore=score; bestIdx=wi; }
+      withAnchors[i].start = prevTs + (posInGap / gapCount) * gapDur;
     }
 
-    /* ── FIX 2: bestIdx bloccato in [0, WN-1] PRIMA dell'accesso ──
-       Senza questo: wWords[bestIdx] potrebbe essere undefined */
-    bestIdx = Math.max(0, Math.min(bestIdx, WN-1));
+    // Terza passata: costruisce risultato con durata per ogni riga
+    for(let i=0; i<withAnchors.length; i++){
+      const startTime = withAnchors[i].start;
+      const nextTime  = i < withAnchors.length-1
+        ? withAnchors[i+1].start
+        : totalDur;
 
-    /* Accesso SICURO — bestIdx è validato */
-    const startTime = wWords[bestIdx].time;
+      result.push({
+        start: Math.max(0, startTime + userOffset),
+        end:   Math.max(nextTime - 0.1, startTime + 1.2),
+        text:  withAnchors[i].text
+      });
+    }
 
-    /* ── FIX 3: endIdx bloccato in [0, WN-1] PRIMA dell'accesso ──
-       Senza questo: wWords[endIdx] potrebbe essere undefined */
-    const endIdx = Math.max(0, Math.min(bestIdx + winSize - 1, WN-1));
+    logT('📌 Modalità timestamp manuali: '+parsed.filter(p=>p.ts!==null).length+' ancore trovate');
 
-    /* Accesso SICURO — endIdx è validato */
-    const endTime = wWords[endIdx].time;
+  } else {
+    /* ── Algoritmo distribuzione lineare (nessun timestamp) ──
+       Divide la durata in N fette uguali */
+    const N = parsed.length;
+    const sliceDur = totalDur / N;
 
-    /* Cursore avanza solo in avanti, mai oltre WN-1 */
-    cursor = Math.min(
-      Math.max(cursor, bestIdx + Math.floor(winSize*0.7)),
-      WN - 1
-    );
+    for(let i=0; i<N; i++){
+      const tSliceStart = i * sliceDur;
+      const tSliceEnd   = (i+1) * sliceDur;
+      const tCenter     = (i+0.5) * sliceDur;
+      const margin      = sliceDur * 0.3;
 
-    result.push({
-      start: Math.max(0, startTime + userOffset),
-      end:   Math.max(endTime, startTime + 1.5),
-      text:  lines[li]
-    });
+      let bestSeg=null, bestDist=Infinity;
+      for(const s of validSegs){
+        if(s.start < tSliceStart-margin || s.start > tSliceEnd+margin) continue;
+        const d=Math.abs(s.start-tCenter);
+        if(d<bestDist){bestDist=d;bestSeg=s;}
+      }
+      const rawStart = bestSeg ? bestSeg.start : tSliceStart;
+      result.push({
+        start: Math.max(0, rawStart + userOffset),
+        end:   Math.max(bestSeg?bestSeg.end:tSliceEnd, rawStart+1.2),
+        text:  parsed[i].text
+      });
+    }
+    logT('📊 Modalità automatica: distribuzione su '+totalDur.toFixed(0)+'s');
   }
 
-  /* 7 — Fix sovrapposizioni */
-  for(let i=0;i<result.length-1;i++){
+  /* 5 — Garanzia ordine cronologico */
+  for(let i=1; i<result.length; i++){
+    if(result[i].start <= result[i-1].start){
+      result[i].start = result[i-1].start + 0.5;
+      result[i].end   = Math.max(result[i].end, result[i].start + 1.2);
+    }
+  }
+
+  /* 6 — Rimuove sovrapposizioni */
+  for(let i=0; i<result.length-1; i++){
     if(result[i].end > result[i+1].start){
-      result[i].end = Math.max(result[i].start+0.5, result[i+1].start-0.05);
+      result[i].end = Math.max(result[i].start+0.4, result[i+1].start-0.05);
     }
   }
 
-  logT('🔗 '+result.length+' righe sincronizzate con i timestamp Whisper');
+  logT('🔗 '+result.length+' righe sincronizzate');
   return result;
 }
 
