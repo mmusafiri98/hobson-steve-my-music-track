@@ -254,9 +254,9 @@ window.switchCoverTab = function(mode){
 };
 
 /* ══════════════════════════════════════════════════
-   GRADIO API — Picasso AI
-   Endpoint: https://muyumba-picasso-ai.hf.space
-   Route:    /infer
+   AI COVER GENERATION — Gradio Client
+   Space: Muyumba/Picasso-Ai
+   Using official @gradio/client library
 ══════════════════════════════════════════════════ */
 window.generateCover = async function(){
   const prompt  = (document.getElementById('coverPrompt')?.value||'').trim();
@@ -272,89 +272,80 @@ window.generateCover = async function(){
   btn.textContent='⏳ Generazione…';
   status.style.display='block';
   status.className='gen-status';
-  status.textContent='⏳ Connessione all\'API Picasso AI…';
+  status.textContent='⏳ Connessione a Picasso AI…';
   preview.style.display='none';
   aiCoverBlob=null;
 
   try{
-    /* STEP 1 — avvia il job */
-    const SPACE = 'https://muyumba-picasso-ai.hf.space';
-    status.textContent='⏳ Invio richiesta…';
-
-    const queueRes = await fetch(SPACE+'/queue/join',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        data:[
-          prompt,
-          negProm||'blurry, low quality, text, watermark, ugly, deformed',
-          0,     // seed
-          true,  // randomize_seed
-          1024,  // width
-          1024,  // height
-          0,     // guidance_scale
-          4      // num_inference_steps
-        ],
-        fn_index:0,
-        session_hash:'mms_'+Math.random().toString(36).slice(2)
-      })
-    });
-
-    if(!queueRes.ok) throw new Error('API non raggiungibile ('+queueRes.status+')');
-    const queueData = await queueRes.json();
-    const eventId   = queueData.event_id;
-    if(!eventId) throw new Error('Nessun event_id dall\'API');
-
-    status.textContent='⏳ Generazione immagine in corso…';
-
-    /* STEP 2 — polling SSE per il risultato */
-    const result = await new Promise((res,rej)=>{
-      const es = new EventSource(SPACE+'/queue/data?session_hash='+queueData.session_hash);
-      const timeout = setTimeout(()=>{es.close();rej(new Error('Timeout: API troppo lenta'));},120000);
-      es.onmessage = e=>{
-        try{
-          const d=JSON.parse(e.data);
-          if(d.msg==='process_completed'){
-            clearTimeout(timeout);es.close();
-            if(d.output?.error) rej(new Error(d.output.error));
-            else res(d.output?.data);
-          }
-          if(d.msg==='queue_full'){clearTimeout(timeout);es.close();rej(new Error('Coda API piena, riprova tra qualche secondo'));}
-        }catch(err){/*ignora parse errors parziali*/}
-      };
-      es.onerror=()=>{clearTimeout(timeout);es.close();rej(new Error('Connessione SSE interrotta'));};
-    });
-
-    /* STEP 3 — estrae URL immagine */
-    let imgUrl = null;
-    if(Array.isArray(result)){
-      // result[0] può essere { url } o { path } o stringa
-      const first = result[0];
-      if(typeof first==='string') imgUrl=first;
-      else if(first?.url)  imgUrl=first.url;
-      else if(first?.path) imgUrl=SPACE+'/file='+first.path;
+    // Carica Gradio client se necessario
+    if(!window.GradioClient){
+      status.textContent='⏳ Caricamento Gradio Client…';
+      await new Promise((resolve,reject) => {
+        const script = document.createElement('script');
+        script.type = 'module';
+        script.innerHTML = `
+          import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client@1.6.0/dist/index.min.js";
+          window.GradioClient = Client;
+          window.dispatchEvent(new Event('gradio-ready'));
+        `;
+        window.addEventListener('gradio-ready', resolve, {once: true});
+        setTimeout(() => reject(new Error('Timeout caricamento Gradio')), 15000);
+        document.head.appendChild(script);
+      });
     }
-    if(!imgUrl) throw new Error('Nessuna immagine nella risposta API');
 
-    // Gestisce URL relativi
-    if(imgUrl.startsWith('/')) imgUrl=SPACE+imgUrl;
+    status.textContent='⏳ Connessione allo Space…';
+    const client = await window.GradioClient.connect("Muyumba/Picasso-Ai");
 
-    status.textContent='⏳ Download immagine…';
+    status.textContent='⏳ Generazione (30-60s)…';
+    
+    const result = await client.predict("/infer", {
+      prompt: prompt,
+      negative_prompt: negProm || "blurry, low quality, text, watermark, ugly",
+      seed: 0,
+      randomize_seed: true,
+      width: 1024,
+      height: 1024,
+      guidance_scale: 0,
+      num_inference_steps: 4
+    });
 
-    /* STEP 4 — scarica come Blob per usarla nel canvas */
-    const imgRes  = await fetch(imgUrl);
-    if(!imgRes.ok) throw new Error('Download immagine fallito');
-    aiCoverBlob   = await imgRes.blob();
+    console.log('Gradio result:', result);
+
+    // Estrai URL immagine
+    let imgUrl = null;
+    if(result?.data){
+      const data = Array.isArray(result.data) ? result.data[0] : result.data;
+      if(typeof data === 'string') imgUrl = data;
+      else if(data?.url) imgUrl = data.url;
+      else if(data?.path) imgUrl = data.path;
+    }
+
+    if(!imgUrl){
+      console.error('Unexpected format:', result);
+      throw new Error('Formato risposta non valido');
+    }
+
+    // Fix URL relativo
+    if(imgUrl.startsWith('/')) imgUrl = 'https://muyumba-picasso-ai.hf.space' + imgUrl;
+
+    status.textContent='⏳ Download…';
+    
+    const imgRes = await fetch(imgUrl);
+    if(!imgRes.ok) throw new Error('Download fallito: ' + imgRes.status);
+    
+    aiCoverBlob = await imgRes.blob();
+    if(aiCoverBlob.size < 1000) throw new Error('Immagine troppo piccola');
+
     const blobUrl = URL.createObjectURL(aiCoverBlob);
-
-    img.src=blobUrl;
+    img.src = blobUrl;
     preview.style.display='block';
     status.className='gen-status ok';
-    status.textContent='✅ Copertina generata! Verrà usata nel video.';
+    status.textContent='✅ Copertina pronta!';
     btn.textContent='🔄 Rigenera';
 
   }catch(err){
-    console.error('Cover AI error:',err);
+    console.error('AI error:',err);
     status.className='gen-status error';
     status.textContent='❌ '+err.message;
     btn.textContent='✨ Genera Copertina';
