@@ -21,6 +21,11 @@ header::before{content:'';position:absolute;inset:0;background:radial-gradient(e
 header h1{font-family:'Bebas Neue',sans-serif;font-size:3.8rem;letter-spacing:4px;position:relative;}
 header p{margin-top:8px;font-size:.98rem;color:rgba(255,255,255,.75);letter-spacing:1px;position:relative;}
 
+/* ── EXIT BUTTON ── */
+.btn-exit{position:absolute;top:16px;right:20px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.85);padding:8px 18px;border-radius:20px;font-family:'DM Sans',sans-serif;font-size:.82rem;font-weight:600;cursor:pointer;transition:all .2s;backdrop-filter:blur(6px);display:flex;align-items:center;gap:7px;text-decoration:none;}
+.btn-exit:hover{background:rgba(0,0,0,.55);color:#fff;border-color:rgba(255,255,255,.5);}
+.btn-exit svg{width:14px;height:14px;flex-shrink:0;}
+
 /* ── TABS ── */
 .tabs-wrap{background:#111;border-bottom:2px solid var(--border);position:sticky;top:0;z-index:100;}
 .tabs-inner{max-width:960px;margin:auto;display:flex;align-items:stretch;padding:0 20px;overflow-x:auto;}
@@ -173,6 +178,15 @@ footer{text-align:center;padding:28px;color:#2a2a2a;font-size:.8rem;border-top:1
 <header>
   <h1>🎶 My Music Studio</h1>
   <p>Multi-Progetto · Whisper Base · AI Cover Generator · Gratuito · Nel browser</p>
+  <!-- ── EXIT BUTTON ── -->
+  <a class="btn-exit" href="index.php" title="Esci e torna al login">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+    Esci
+  </a>
 </header>
 
 <!-- TABS -->
@@ -847,4 +861,5 @@ getDB().then(()=>{renderTabs();renderProject();}).catch(()=>{
 </body>
 </html>
 
+  
   
