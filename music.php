@@ -1095,38 +1095,96 @@ async function handleCreate() {
     const chunks = [];
     rec.ondataavailable = e => { if (e.data?.size>0) chunks.push(e.data); };
 
+   // ════════════════════════════════════════════════════════════
+// SOSTITUISCI QUESTO BLOCCO nel tuo music.php
+// Cerca: rec.onstop = async () => {
+// e sostituisci TUTTO il blocco fino al }; successivo
+// ════════════════════════════════════════════════════════════
+
     rec.onstop = async () => {
       setStatus('Salvataggio…', 99, '');
       try {
         if (!chunks.length) throw new Error('Nessun dato — usa Chrome o Edge.');
         const blob = new Blob(chunks, {type:'video/webm'});
 
-        // 1. Salva in IndexedDB locale
+        // ── 1. Salva in IndexedDB locale ─────────────────────
         const idbId = await dbSave(blob, title, artist, projId, proj?.dbId||null, lyricsMode);
-        setStatus('✅ Video salvato localmente!', 100, '');
+        setStatus('✅ Salvato localmente! Sincronizzazione DB…', 100, '');
+        logT('💾 Salvato in IndexedDB: ' + idbId);
 
-        // 2. Sync vers DB PostgreSQL (arrière-plan)
-        const projDbId = proj?.dbId || await syncProject(proj);
-        syncTrack({
-          title, artist,
-          local_idb_id: idbId,
-          project_id:   projDbId || null,
-          language:     lang,
-          cover_type:   usesAiCover ? 'ai' : 'upload',
-          lyrics_mode:  lyricsMode,
-          device_id:    DEVICE_ID,
-          device_name:  DEVICE_NAME,
-          size_bytes:   blob.size,
-          duration_s:   Math.round(duration*10)/10,
-        }).then(trackId => {
-          if (trackId) {
-            dbMarkSynced(idbId);
-            loadGallery(); // refresh le badge ● vert
+        // ── 2. Aspetta il dbId del progetto (fondamentale!) ──
+        let projDbId = proj?.dbId || null;
+        if (!projDbId) {
+          logT('📡 Sincronizzazione progetto con DB…');
+          projDbId = await syncProject(proj);
+          if (projDbId) {
+            logT('✅ Progetto sincronizzato — DB id: ' + projDbId);
+          } else {
+            logT('⚠️ Sincronizzazione progetto fallita — riprovo tra 2s…');
+            await new Promise(r => setTimeout(r, 2000));
+            projDbId = await syncProject(proj);
+            if (!projDbId) logT('❌ Impossibile sincronizzare il progetto — il video resterà solo locale');
           }
-        });
+        }
 
-        setTimeout(() => { resetUI(); loadGallery(); }, 900);
-      } catch(err) { alert('Errore salvataggio: '+err.message); resetUI(); }
+        // ── 3. Sync track verso PostgreSQL ───────────────────
+        if (projDbId) {
+          logT('📡 Sincronizzazione track verso DB…');
+          try {
+            const trackId = await syncTrack({
+              title,
+              artist,
+              local_idb_id: idbId,
+              project_id:   projDbId,
+              language:     lang,
+              cover_type:   usesAiCover ? 'ai' : 'upload',
+              lyrics_mode:  lyricsMode,
+              device_id:    DEVICE_ID,
+              device_name:  DEVICE_NAME,
+              size_bytes:   blob.size,
+              duration_s:   Math.round(duration * 10) / 10,
+            });
+
+            if (trackId) {
+              logT('✅ Track salvata su DB — id: ' + trackId);
+              await dbMarkSynced(idbId);
+              // Aggiorna il badge ● verde nella gallery
+              loadGallery();
+            } else {
+              logT('⚠️ syncTrack ha restituito null — riprovo tra 3s…');
+              await new Promise(r => setTimeout(r, 3000));
+              const trackId2 = await syncTrack({
+                title, artist, local_idb_id: idbId,
+                project_id: projDbId, language: lang,
+                cover_type: usesAiCover ? 'ai' : 'upload',
+                lyrics_mode: lyricsMode, device_id: DEVICE_ID,
+                device_name: DEVICE_NAME, size_bytes: blob.size,
+                duration_s: Math.round(duration * 10) / 10,
+              });
+              if (trackId2) {
+                logT('✅ Track sincronizzata al secondo tentativo — id: ' + trackId2);
+                await dbMarkSynced(idbId);
+                loadGallery();
+              } else {
+                logT('❌ Sincronizzazione track fallita — verifica la sessione PHP e il DB');
+              }
+            }
+          } catch(syncErr) {
+            logT('❌ Errore sync track: ' + syncErr.message);
+            console.error('syncTrack error:', syncErr);
+          }
+        } else {
+          logT('⚠️ Track non sincronizzata su DB (progetto non sincronizzato)');
+        }
+
+        // ── 4. Reset UI e ricarica gallery ───────────────────
+        setTimeout(() => { resetUI(); loadGallery(); }, 1200);
+
+      } catch(err) {
+        logT('❌ Errore salvataggio: ' + err.message);
+        alert('Errore salvataggio: ' + err.message);
+        resetUI();
+      }
     };
 
     setStatus('Registrazione…', 32, 'Non chiudere questa pagina');
