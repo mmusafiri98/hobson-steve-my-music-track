@@ -1,20 +1,15 @@
 <?php
 // ============================================================
-//  music.php — My Music Studio
-//  - Chaque user a son interface isolée (localStorage + IndexedDB par user_id)
-//  - Sync automatique sur DB : projects, music_tracks, user_sessions
-//  - Admin : panneau complet de tout ce qui a été créé
+//  music.php — My Music Studio  [VERSION DEBUG]
 // ============================================================
 session_start();
 require_once __DIR__ . '/db.php';
 
-// ── Protection ───────────────────────────────────────────────
 if (empty($_SESSION['user_id'])) {
     header('Location: index.php');
     exit;
 }
 
-// ── Logout ───────────────────────────────────────────────────
 if (isset($_GET['logout'])) {
     try {
         $pdo = getDB();
@@ -26,7 +21,6 @@ if (isset($_GET['logout'])) {
     exit;
 }
 
-// ── Charge les données user ──────────────────────────────────
 try {
     $pdo  = getDB();
     $stmt = $pdo->prepare(
@@ -40,7 +34,6 @@ try {
     die('DB Error: ' . $e->getMessage());
 }
 
-// ── Enregistre/rafraîchit la session dans user_sessions ──────
 try {
     $sessId = session_id();
     $ip     = substr($_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '', 0, 45);
@@ -54,71 +47,172 @@ try {
 } catch (PDOException $e) {}
 
 // ════════════════════════════════════════════════════════════
-//  API AJAX — appelée depuis le JS avec fetch()
+//  API AJAX
 // ════════════════════════════════════════════════════════════
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['api'])) {
     header('Content-Type: application/json');
     $action = $_GET['api'];
     $uid    = (int)$_SESSION['user_id'];
 
-    try {
-        $pdo = getDB();
+    // ── DEBUG endpoint ────────────────────────────────────────
+    if ($action === 'debug_check') {
+        try {
+            $pdo = getDB();
+            // Verifica struttura tabella music_tracks
+            $cols = $pdo->query("SELECT column_name, data_type, is_nullable
+                FROM information_schema.columns
+                WHERE table_name = 'music_tracks'
+                ORDER BY ordinal_position")->fetchAll();
+            // Verifica struttura tabella projects
+            $pcols = $pdo->query("SELECT column_name, data_type, is_nullable
+                FROM information_schema.columns
+                WHERE table_name = 'projects'
+                ORDER BY ordinal_position")->fetchAll();
+            // Conta records esistenti per questo user
+            $trackCount = $pdo->prepare("SELECT COUNT(*) FROM music_tracks WHERE user_id = :uid");
+            $trackCount->execute([':uid' => $uid]);
+            $projCount = $pdo->prepare("SELECT COUNT(*) FROM projects WHERE user_id = :uid");
+            $projCount->execute([':uid' => $uid]);
+            // Ultimi 5 projects
+            $lastProj = $pdo->prepare("SELECT id, name, description, created_at FROM projects WHERE user_id = :uid ORDER BY created_at DESC LIMIT 5");
+            $lastProj->execute([':uid' => $uid]);
+            // Ultimi 5 tracks
+            $lastTrack = $pdo->prepare("SELECT id, title, artist, project_id, is_synced, created_at FROM music_tracks WHERE user_id = :uid ORDER BY created_at DESC LIMIT 5");
+            $lastTrack->execute([':uid' => $uid]);
 
-        // ── save_project ─────────────────────────────────────
-        if ($action === 'save_project') {
-            $d       = json_decode(file_get_contents('php://input'), true);
-            $name    = substr(trim($d['name']     ?? 'Progetto'), 0, 100);
-            $localId = substr(trim($d['local_id'] ?? ''),         0, 120);
-            $did     = substr(trim($d['device_id']   ?? ''), 0, 120);
-            $dname   = substr(trim($d['device_name'] ?? ''), 0, 100);
+            echo json_encode([
+                'ok'              => true,
+                'session_user_id' => $uid,
+                'session_id'      => session_id(),
+                'music_tracks_columns' => $cols,
+                'projects_columns'     => $pcols,
+                'track_count'     => (int)$trackCount->fetchColumn(),
+                'project_count'   => (int)$projCount->fetchColumn(),
+                'last_projects'   => $lastProj->fetchAll(),
+                'last_tracks'     => $lastTrack->fetchAll(),
+            ]);
+        } catch (PDOException $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage(), 'step' => 'debug_check']);
+        }
+        exit;
+    }
 
-            // ── Met à jour users : device + updated_at ─────────
+    // ── save_project ─────────────────────────────────────────
+    if ($action === 'save_project') {
+        $rawBody = file_get_contents('php://input');
+        $d       = json_decode($rawBody, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            echo json_encode(['ok'=>false,'error'=>'JSON parse error: '.json_last_error_msg(),'raw'=>substr($rawBody,0,200)]);
+            exit;
+        }
+
+        $name    = substr(trim($d['name']     ?? 'Progetto'), 0, 100);
+        $localId = substr(trim($d['local_id'] ?? ''),         0, 120);
+        $did     = substr(trim($d['device_id']   ?? ''), 0, 120);
+        $dname   = substr(trim($d['device_name'] ?? ''), 0, 100);
+
+        if (!$localId) {
+            echo json_encode(['ok'=>false,'error'=>'local_id mancante','received'=>$d]);
+            exit;
+        }
+
+        try {
+            $pdo = getDB();
+
             $pdo->prepare(
-                "UPDATE users SET
-                    updated_at  = NOW(),
-                    device_id   = COALESCE(:did, device_id),
-                    device_name = COALESCE(:dn,  device_name)
-                 WHERE id = :uid"
-            )->execute([':uid'=>$uid, ':did'=>$did?:null, ':dn'=>$dname?:null]);
+                "UPDATE users SET updated_at=NOW(),
+                    device_id=COALESCE(:did,device_id),
+                    device_name=COALESCE(:dn,device_name)
+                 WHERE id=:uid"
+            )->execute([':uid'=>$uid,':did'=>$did?:null,':dn'=>$dname?:null]);
 
-            $ex = $pdo->prepare(
-                "SELECT id FROM projects WHERE user_id=:uid AND description=:lid LIMIT 1"
-            );
-            $ex->execute([':uid'=>$uid, ':lid'=>'local:'.$localId]);
+            $ex = $pdo->prepare("SELECT id FROM projects WHERE user_id=:uid AND description=:lid LIMIT 1");
+            $ex->execute([':uid'=>$uid,':lid'=>'local:'.$localId]);
             $row = $ex->fetch();
 
             if ($row) {
                 $pdo->prepare("UPDATE projects SET name=:n, updated_at=NOW() WHERE id=:id")
-                    ->execute([':n'=>$name, ':id'=>$row['id']]);
-                echo json_encode(['ok'=>true, 'project_id'=>$row['id']]);
+                    ->execute([':n'=>$name,':id'=>$row['id']]);
+                echo json_encode(['ok'=>true,'project_id'=>$row['id'],'action'=>'updated']);
             } else {
                 $ins = $pdo->prepare(
                     "INSERT INTO projects (user_id, name, description)
                      VALUES (:uid,:name,:desc) RETURNING id"
                 );
-                $ins->execute([':uid'=>$uid, ':name'=>$name, ':desc'=>'local:'.$localId]);
-                echo json_encode(['ok'=>true, 'project_id'=>$ins->fetchColumn()]);
+                $ins->execute([':uid'=>$uid,':name'=>$name,':desc'=>'local:'.$localId]);
+                $newId = $ins->fetchColumn();
+                echo json_encode(['ok'=>true,'project_id'=>$newId,'action'=>'inserted']);
             }
+        } catch (PDOException $e) {
+            echo json_encode([
+                'ok'    => false,
+                'error' => $e->getMessage(),
+                'step'  => 'save_project_db',
+                'data'  => ['uid'=>$uid,'name'=>$name,'localId'=>$localId]
+            ]);
+        }
+        exit;
+    }
+
+    // ── save_track ───────────────────────────────────────────
+    if ($action === 'save_track') {
+        $rawBody = file_get_contents('php://input');
+        $d       = json_decode($rawBody, true);
+
+        // DEBUG: log tutti i dati ricevuti
+        $debugReceived = [
+            'uid'          => $uid,
+            'raw_length'   => strlen($rawBody),
+            'json_error'   => json_last_error_msg(),
+            'fields'       => $d,
+        ];
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            echo json_encode(['ok'=>false,'error'=>'JSON parse error','debug'=>$debugReceived]);
             exit;
         }
 
-        // ── save_track ───────────────────────────────────────
-        if ($action === 'save_track') {
-            $d = json_decode(file_get_contents('php://input'), true);
-            $title    = substr(trim($d['title']       ?? ''), 0, 200);
-            $artist   = substr(trim($d['artist']      ?? ''), 0, 200);
-            $idbId    = substr(trim($d['local_idb_id']?? ''), 0, 200);
-            $projDbId = isset($d['project_id']) ? (int)$d['project_id'] : null;
-            $lang     = substr(trim($d['language']    ?? ''), 0, 30);
-            $ctype    = in_array($d['cover_type'] ??'', ['upload','ai'])                 ? $d['cover_type']  : 'upload';
-            $lmode    = in_array($d['lyrics_mode'] ??'', ['whisper','manual','none'])     ? $d['lyrics_mode'] : 'none';
-            $did      = substr(trim($d['device_id']   ?? ''), 0, 120);
-            $dname    = substr(trim($d['device_name'] ?? ''), 0, 100);
-            $sz       = isset($d['size_bytes'])  ? (int)$d['size_bytes']    : null;
-            $dur      = isset($d['duration_s'])  ? (float)$d['duration_s'] : null;
+        $title    = substr(trim($d['title']        ?? ''), 0, 200);
+        $artist   = substr(trim($d['artist']       ?? ''), 0, 200);
+        $idbId    = substr(trim($d['local_idb_id'] ?? ''), 0, 200);
+        $projDbId = isset($d['project_id']) && $d['project_id'] ? (int)$d['project_id'] : null;
+        $lang     = substr(trim($d['language']     ?? ''), 0, 30);
+        $ctype    = in_array($d['cover_type']  ?? '', ['upload','ai'])                ? $d['cover_type']  : 'upload';
+        $lmode    = in_array($d['lyrics_mode'] ?? '', ['whisper','manual','none'])    ? $d['lyrics_mode'] : 'none';
+        $did      = substr(trim($d['device_id']    ?? ''), 0, 120);
+        $dname    = substr(trim($d['device_name']  ?? ''), 0, 100);
+        $sz       = isset($d['size_bytes'])  ? (int)$d['size_bytes']    : null;
+        $dur      = isset($d['duration_s'])  ? (float)$d['duration_s'] : null;
 
-            if (!$title || !$idbId) {
-                echo json_encode(['ok'=>false,'error'=>'title et local_idb_id requis']); exit;
+        // Validazione con debug
+        $validationErrors = [];
+        if (!$title)  $validationErrors[] = 'title vuoto';
+        if (!$idbId)  $validationErrors[] = 'local_idb_id vuoto';
+
+        if (!empty($validationErrors)) {
+            echo json_encode([
+                'ok'     => false,
+                'error'  => implode(', ', $validationErrors),
+                'debug'  => $debugReceived,
+                'parsed' => ['title'=>$title,'artist'=>$artist,'idbId'=>$idbId,'projDbId'=>$projDbId]
+            ]);
+            exit;
+        }
+
+        try {
+            $pdo = getDB();
+
+            // Verifica che project_id esista (se fornito)
+            $projVerified = null;
+            if ($projDbId) {
+                $chk = $pdo->prepare("SELECT id FROM projects WHERE id=:pid AND user_id=:uid LIMIT 1");
+                $chk->execute([':pid'=>$projDbId,':uid'=>$uid]);
+                $projVerified = $chk->fetchColumn();
+                if (!$projVerified) {
+                    // project_id non appartiene a questo user — usiamo NULL
+                    $projDbId = null;
+                }
             }
 
             $ins = $pdo->prepare(
@@ -135,40 +229,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['api'])) {
                     :sz,:dur,
                     TRUE,NOW(),:hs)
                  ON CONFLICT (local_idb_id, user_id) DO UPDATE SET
-                   title=EXCLUDED.title, artist=EXCLUDED.artist,
+                   title=EXCLUDED.title,
+                   artist=EXCLUDED.artist,
                    project_id=EXCLUDED.project_id,
-                   storage_type_val='both', is_synced=TRUE,
-                   synced_at=NOW(), updated_at=NOW()
+                   storage_type_val='both',
+                   is_synced=TRUE,
+                   synced_at=NOW(),
+                   updated_at=NOW()
                  RETURNING id"
             );
-            $ins->execute([
-                ':uid'=>$uid,   ':pid'=>$projDbId, ':title'=>$title,
-                ':artist'=>$artist, ':lang'=>$lang,
-                ':ct'=>$ctype,  ':lm'=>$lmode,
-                ':iid'=>$idbId, ':did'=>$did?:null, ':dn'=>$dname?:null,
-                ':sz'=>$sz,     ':dur'=>$dur,
-                ':hs'=>($lmode!=='none'),
-            ]);
+
+            $params = [
+                ':uid'   => $uid,
+                ':pid'   => $projDbId,
+                ':title' => $title,
+                ':artist'=> $artist,
+                ':lang'  => $lang,
+                ':ct'    => $ctype,
+                ':lm'    => $lmode,
+                ':iid'   => $idbId,
+                ':did'   => $did   ?: null,
+                ':dn'    => $dname ?: null,
+                ':sz'    => $sz,
+                ':dur'   => $dur,
+                ':hs'    => ($lmode !== 'none'),
+            ];
+
+            $ins->execute($params);
             $trackId = $ins->fetchColumn();
 
-            // ── Met à jour users : device + updated_at ─────────
+            // Aggiorna device su users
             $pdo->prepare(
-                "UPDATE users SET
-                    updated_at  = NOW(),
-                    device_id   = COALESCE(:did, device_id),
-                    device_name = COALESCE(:dn,  device_name)
-                 WHERE id = :uid"
-            )->execute([':uid'=>$uid, ':did'=>$did?:null, ':dn'=>$dname?:null]);
+                "UPDATE users SET updated_at=NOW(),
+                    device_id=COALESCE(:did,device_id),
+                    device_name=COALESCE(:dn,device_name)
+                 WHERE id=:uid"
+            )->execute([':uid'=>$uid,':did'=>$did?:null,':dn'=>$dname?:null]);
 
-            echo json_encode(['ok'=>true,'track_id'=>$trackId]);
-            exit;
+            echo json_encode([
+                'ok'             => true,
+                'track_id'       => $trackId,
+                'debug'          => [
+                    'user_id'    => $uid,
+                    'project_id' => $projDbId,
+                    'title'      => $title,
+                    'artist'     => $artist,
+                    'idb_id'     => $idbId,
+                    'proj_verified' => $projVerified,
+                    'params_sent'=> array_map(fn($v) => is_null($v)?'NULL':$v, $params),
+                ]
+            ]);
+
+        } catch (PDOException $e) {
+            echo json_encode([
+                'ok'     => false,
+                'error'  => $e->getMessage(),
+                'step'   => 'save_track_db',
+                'debug'  => $debugReceived,
+                'parsed' => [
+                    'uid'     => $uid,
+                    'title'   => $title,
+                    'artist'  => $artist,
+                    'idbId'   => $idbId,
+                    'projDbId'=> $projDbId,
+                ]
+            ]);
         }
+        exit;
+    }
 
-        // ── admin_data (admin seulement) ─────────────────────
-        if ($action === 'admin_data') {
-            if ($user['role'] !== 'admin') {
-                echo json_encode(['ok'=>false,'error'=>'Accesso negato']); exit;
-            }
+    // ── admin_data ───────────────────────────────────────────
+    if ($action === 'admin_data') {
+        if ($user['role'] !== 'admin') {
+            echo json_encode(['ok'=>false,'error'=>'Accesso negato']); exit;
+        }
+        try {
+            $pdo    = getDB();
             $stats  = $pdo->query("SELECT * FROM v_admin_stats")->fetch();
             $tracks = $pdo->query(
                 "SELECT mt.id, mt.title, mt.artist, mt.storage_type_val AS storage_type,
@@ -192,14 +328,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['api'])) {
                   GROUP BY u.id ORDER BY track_count DESC"
             )->fetchAll();
             echo json_encode(['ok'=>true,'stats'=>$stats,'tracks'=>$tracks,'users'=>$users]);
-            exit;
+        } catch (PDOException $e) {
+            echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);
         }
-
-        echo json_encode(['ok'=>false,'error'=>'Action inconnue']);
-
-    } catch (PDOException $e) {
-        echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);
+        exit;
     }
+
+    echo json_encode(['ok'=>false,'error'=>'Action inconnue: '.$action]);
     exit;
 }
 ?>
@@ -207,24 +342,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['api'])) {
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<title>🎶 My Music Studio</title>
+<title>🎶 My Music Studio [DEBUG]</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600&display=swap');
 :root{
   --red:#d6004c;--purple:#7b1fa2;--bg:#0e0e0e;
   --card:#191919;--border:#2a2a2a;--green:#4caf50;--gold:#f0a500;
+  --debug-bg:#0a0f0a;--debug-border:#1a3a1a;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:#fff;min-height:100vh;}
+
+/* ── DEBUG PANEL ── */
+#debugPanel{
+  position:fixed;bottom:0;right:0;width:480px;max-height:50vh;
+  background:#050f05;border:2px solid #1a4a1a;border-radius:14px 0 0 0;
+  z-index:9999;display:flex;flex-direction:column;
+  box-shadow:0 -4px 40px rgba(0,0,0,.8);
+  transition:transform .3s;
+}
+#debugPanel.collapsed{transform:translateY(calc(100% - 42px));}
+#debugHeader{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 14px;background:#0d1a0d;border-bottom:1px solid #1a3a1a;
+  border-radius:12px 0 0 0;cursor:pointer;flex-shrink:0;
+}
+#debugHeader span{font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:1px;color:#4caf50;}
+#debugHeaderRight{display:flex;gap:8px;align-items:center;}
+#debugCount{background:#1a3a1a;color:#4caf50;font-size:.7rem;padding:2px 8px;border-radius:20px;font-weight:700;}
+.dbg-btn{background:#111;border:1px solid #2a2a2a;color:#888;padding:3px 10px;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:'DM Sans',sans-serif;}
+.dbg-btn:hover{color:#fff;border-color:#444;}
+.dbg-btn.danger{border-color:#3a1a1a;color:#f44336;}
+.dbg-btn.danger:hover{background:#1a0808;}
+#debugBody{overflow-y:auto;flex:1;padding:10px 14px;font-family:'Courier New',monospace;font-size:.73rem;line-height:1.7;}
+.dbg-entry{border-bottom:1px solid #111;padding:6px 0;animation:fadeIn .2s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}
+.dbg-time{color:#2a5a2a;font-size:.66rem;margin-right:6px;}
+.dbg-ok{color:#4caf50;}
+.dbg-err{color:#f44336;}
+.dbg-warn{color:#ffb300;}
+.dbg-info{color:#7090ff;}
+.dbg-step{color:#ce93d8;}
+.dbg-data{color:#888;font-size:.68rem;margin-left:16px;white-space:pre-wrap;word-break:break-all;}
+.dbg-sep{border-bottom:1px solid #1a3a1a;margin:4px 0;}
+#debugBtnRun{
+  margin:8px 14px;padding:8px;background:linear-gradient(135deg,#1a3a1a,#0d2a0d);
+  border:1px solid var(--debug-border);border-radius:8px;color:#4caf50;
+  font-family:'Bebas Neue',sans-serif;font-size:.9rem;letter-spacing:1px;
+  cursor:pointer;transition:opacity .2s;flex-shrink:0;
+}
+#debugBtnRun:hover{opacity:.8;}
 
 /* ── HEADER ── */
 header{background:linear-gradient(135deg,var(--red),var(--purple));text-align:center;padding:52px 20px 44px;position:relative;overflow:hidden;}
 header::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 60% 40%,rgba(255,255,255,.1) 0%,transparent 65%);}
 header h1{font-family:'Bebas Neue',sans-serif;font-size:3.8rem;letter-spacing:4px;position:relative;}
 header p{margin-top:8px;font-size:.98rem;color:rgba(255,255,255,.75);letter-spacing:1px;position:relative;}
-
-/* User chip */
+.debug-badge{display:inline-block;background:rgba(76,175,80,.2);border:1px solid rgba(76,175,80,.4);color:#4caf50;font-size:.7rem;padding:3px 10px;border-radius:20px;font-weight:700;letter-spacing:1px;margin-top:6px;}
 .user-chip{position:absolute;top:14px;right:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
 .user-avatar{width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,.4);border:2px solid rgba(255,255,255,.3);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:.95rem;flex-shrink:0;}
 .user-info{display:flex;flex-direction:column;align-items:flex-end;}
@@ -249,7 +424,7 @@ header p{margin-top:8px;font-size:.98rem;color:rgba(255,255,255,.75);letter-spac
 .tab-new{margin-left:12px;align-self:center;flex-shrink:0;padding:7px 16px;background:linear-gradient(135deg,var(--red),var(--purple));color:#fff;border:none;border-radius:20px;font-family:'Bebas Neue',sans-serif;font-size:.88rem;letter-spacing:1px;cursor:pointer;transition:opacity .2s;white-space:nowrap;}
 .tab-new:hover{opacity:.85;}
 
-.container{max-width:960px;margin:auto;padding:28px 20px 60px;}
+.container{max-width:960px;margin:auto;padding:28px 20px 120px;}
 
 /* ── PROJECT BAR ── */
 .project-bar{display:flex;align-items:center;gap:12px;margin-bottom:22px;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 20px;}
@@ -351,7 +526,7 @@ input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%
 .video-meta{padding:13px 15px 6px;line-height:1.5;}
 .video-meta strong{font-size:.97rem;display:block;}
 .video-meta span{font-size:.83rem;color:#666;}
-.db-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-left:6px;vertical-align:middle;title:attr(title);}
+.db-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-left:6px;vertical-align:middle;}
 .video-actions{display:flex;gap:9px;padding:10px 15px 15px;}
 .btn-dl,.btn-del{flex:1;border-radius:9px;text-align:center;padding:9px 6px;font-size:.82rem;font-family:'DM Sans',sans-serif;font-weight:600;cursor:pointer;transition:opacity .15s;border:none;display:flex;align-items:center;justify-content:center;gap:5px;text-decoration:none;}
 .btn-dl{background:var(--red);color:#fff;}
@@ -404,8 +579,7 @@ input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%
 .btn-modal-ok:hover{opacity:.88;}
 
 footer{text-align:center;padding:28px;color:#2a2a2a;font-size:.8rem;border-top:1px solid #161616;}
-@keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
-@media(max-width:580px){.row{grid-template-columns:1fr;}header h1{font-size:2.6rem;}.upload-box{padding:22px 18px;}.user-info{display:none;}}
+@media(max-width:580px){.row{grid-template-columns:1fr;}header h1{font-size:2.6rem;}.upload-box{padding:22px 18px;}.user-info{display:none;}#debugPanel{width:100%;border-radius:0;}}
 </style>
 </head>
 <body>
@@ -413,6 +587,7 @@ footer{text-align:center;padding:28px;color:#2a2a2a;font-size:.8rem;border-top:1
 <header>
   <h1>🎶 My Music Studio</h1>
   <p>Multi-Progetto · Whisper Base · AI Cover Generator · Gratuito · Nel browser</p>
+  <div><span class="debug-badge">🐛 DEBUG MODE ATTIVO</span></div>
 
   <div class="user-chip">
     <div class="user-info">
@@ -421,9 +596,7 @@ footer{text-align:center;padding:28px;color:#2a2a2a;font-size:.8rem;border-top:1
     </div>
     <div class="user-avatar"><?= strtoupper(mb_substr($user['username'],0,1)) ?></div>
     <?php if ($user['role'] === 'admin'): ?>
-    <button class="btn-header btn-admin" onclick="openAdmin()">
-      ⚙️ Admin
-    </button>
+    <button class="btn-header btn-admin" onclick="openAdmin()">⚙️ Admin</button>
     <?php endif; ?>
     <a class="btn-header btn-exit" href="music.php?logout=1">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -456,7 +629,7 @@ footer{text-align:center;padding:28px;color:#2a2a2a;font-size:.8rem;border-top:1
   </div>
 </div>
 
-<footer>© 2026 – My Music Studio · Whisper by OpenAI · Transformers.js by Hugging Face · Picasso AI by Muyumba</footer>
+<footer>© 2026 – My Music Studio · DEBUG VERSION</footer>
 
 <!-- MODAL NUOVO PROGETTO -->
 <div class="modal-bg" id="modalBg">
@@ -469,6 +642,21 @@ footer{text-align:center;padding:28px;color:#2a2a2a;font-size:.8rem;border-top:1
       <button class="btn-modal-ok" id="btnModalOk">🚀 Crea Progetto</button>
     </div>
   </div>
+</div>
+
+<!-- ═══ DEBUG PANEL ═══ -->
+<div id="debugPanel">
+  <div id="debugHeader" onclick="toggleDebug()">
+    <span>🐛 DEBUG CONSOLE</span>
+    <div id="debugHeaderRight">
+      <span id="debugCount">0</span>
+      <button class="dbg-btn" onclick="event.stopPropagation();runDebugCheck()">🔍 DB Check</button>
+      <button class="dbg-btn danger" onclick="event.stopPropagation();clearDebug()">🗑 Clear</button>
+      <button class="dbg-btn" onclick="event.stopPropagation();toggleDebug()">▲</button>
+    </div>
+  </div>
+  <button id="debugBtnRun" onclick="runDebugCheck()">🔍 ESEGUI CONTROLLO DB — verifica sessione + tabelle + records</button>
+  <div id="debugBody"></div>
 </div>
 
 <!-- Données PHP → JS -->
@@ -487,9 +675,192 @@ import { pipeline, env }
 env.allowLocalModels = false;
 env.useBrowserCache  = true;
 
-/* ══════════════════════════════════════════════════════════
-   DEVICE ID
-══════════════════════════════════════════════════════════ */
+// ══════════════════════════════════════════════════════════
+//  DEBUG SYSTEM
+// ══════════════════════════════════════════════════════════
+let _debugCount = 0;
+let _debugCollapsed = false;
+
+window.toggleDebug = function() {
+  _debugCollapsed = !_debugCollapsed;
+  document.getElementById('debugPanel').classList.toggle('collapsed', _debugCollapsed);
+  document.querySelector('#debugHeaderRight .dbg-btn:last-child').textContent = _debugCollapsed ? '▲' : '▼';
+};
+window.clearDebug = function() {
+  document.getElementById('debugBody').innerHTML = '';
+  _debugCount = 0;
+  document.getElementById('debugCount').textContent = '0';
+};
+
+function dbg(type, msg, data) {
+  _debugCount++;
+  document.getElementById('debugCount').textContent = _debugCount;
+  const body = document.getElementById('debugBody');
+  const entry = document.createElement('div');
+  entry.className = 'dbg-entry';
+  const now = new Date();
+  const ts = now.toTimeString().slice(0,8) + '.' + String(now.getMilliseconds()).padStart(3,'0');
+  let cls = 'dbg-info';
+  if (type === 'OK')   cls = 'dbg-ok';
+  if (type === 'ERR')  cls = 'dbg-err';
+  if (type === 'WARN') cls = 'dbg-warn';
+  if (type === 'STEP') cls = 'dbg-step';
+  entry.innerHTML = `<span class="dbg-time">${ts}</span><span class="${cls}">[${type}] ${msg}</span>`;
+  if (data !== undefined) {
+    const pre = document.createElement('div');
+    pre.className = 'dbg-data';
+    try { pre.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2); }
+    catch(e) { pre.textContent = String(data); }
+    entry.appendChild(pre);
+  }
+  body.appendChild(entry);
+  body.scrollTop = body.scrollHeight;
+  if (_debugCollapsed) {
+    _debugCollapsed = false;
+    document.getElementById('debugPanel').classList.remove('collapsed');
+  }
+  console.log(`[${type}] ${msg}`, data !== undefined ? data : '');
+}
+
+window.runDebugCheck = async function() {
+  dbg('STEP', '═══ CONTROLLO DB COMPLETO ═══');
+  dbg('INFO', 'Sessione utente attiva', { user_id: CURRENT_USER.id, username: CURRENT_USER.username, role: CURRENT_USER.role });
+  dbg('INFO', 'Chiamata API: debug_check…');
+  try {
+    const r = await fetch('music.php?api=debug_check', { method:'POST', body:'' });
+    dbg('INFO', `HTTP Response status: ${r.status} ${r.statusText}`);
+    const text = await r.text();
+    dbg('INFO', `Raw response (prime 500 chars):`, text.slice(0, 500));
+    let d;
+    try { d = JSON.parse(text); } catch(e) {
+      dbg('ERR', 'JSON parse FALLITO — il server non ha restituito JSON valido!', text.slice(0, 800));
+      dbg('WARN', 'Cause possibili: redirect alla login, errore PHP, output prima del JSON');
+      return;
+    }
+    if (!d.ok) { dbg('ERR', 'API debug_check ha restituito ok=false', d); return; }
+
+    dbg('OK', `Sessione PHP attiva — user_id nel DB: ${d.session_user_id}`);
+    if (d.session_user_id !== CURRENT_USER.id) {
+      dbg('ERR', `MISMATCH user_id! JS dice ${CURRENT_USER.id} ma PHP dice ${d.session_user_id}`);
+    } else {
+      dbg('OK', `user_id coerente: ${CURRENT_USER.id}`);
+    }
+
+    dbg('INFO', `Colonne tabella music_tracks (${d.music_tracks_columns?.length || 0} colonne):`,
+      (d.music_tracks_columns||[]).map(c => `${c.column_name} [${c.data_type}] nullable:${c.is_nullable}`).join('\n'));
+    dbg('INFO', `Colonne tabella projects (${d.projects_columns?.length || 0} colonne):`,
+      (d.projects_columns||[]).map(c => `${c.column_name} [${c.data_type}] nullable:${c.is_nullable}`).join('\n'));
+
+    dbg('INFO', `Records trovati — projects: ${d.project_count}, music_tracks: ${d.track_count}`);
+
+    if (d.last_projects?.length) {
+      dbg('OK', 'Ultimi progetti nel DB:', d.last_projects);
+    } else {
+      dbg('WARN', 'Nessun progetto trovato per questo user nel DB');
+    }
+    if (d.last_tracks?.length) {
+      dbg('OK', 'Ultimi tracks nel DB:', d.last_tracks);
+    } else {
+      dbg('WARN', 'Nessun track trovato per questo user nel DB');
+    }
+
+    // Verifica colonne critiche
+    const cols = (d.music_tracks_columns||[]).map(c => c.column_name);
+    const required = ['id','user_id','project_id','title','artist','local_idb_id','cover_type_val','lyrics_mode_val','storage_type_val'];
+    required.forEach(col => {
+      if (cols.includes(col)) dbg('OK', `Colonna music_tracks.${col} ✅ esiste`);
+      else dbg('ERR', `Colonna music_tracks.${col} ❌ NON ESISTE — problema schema DB!`);
+    });
+
+    dbg('STEP', '═══ FINE CONTROLLO DB ═══');
+  } catch(e) {
+    dbg('ERR', 'Eccezione durante debug_check', e.message);
+  }
+};
+
+// ══════════════════════════════════════════════════════════
+//  SYNC FUNCTIONS — con debug completo
+// ══════════════════════════════════════════════════════════
+async function syncProject(proj) {
+  dbg('STEP', `syncProject — local_id: ${proj.id}, name: "${proj.name}"`);
+  const payload = { name: proj.name, local_id: proj.id, device_id: DEVICE_ID, device_name: DEVICE_NAME };
+  dbg('INFO', 'Payload syncProject:', payload);
+  try {
+    const r = await fetch('music.php?api=save_project', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    dbg('INFO', `syncProject HTTP: ${r.status} ${r.statusText}`);
+    if (!r.ok) {
+      const text = await r.text();
+      dbg('ERR', `syncProject HTTP ${r.status} — risposta non-200:`, text.slice(0,400));
+      return null;
+    }
+    const text = await r.text();
+    dbg('INFO', 'syncProject raw response:', text.slice(0, 400));
+    let d;
+    try { d = JSON.parse(text); } catch(e) {
+      dbg('ERR', 'syncProject: JSON parse fallito!', text.slice(0,400));
+      return null;
+    }
+    if (d.ok) {
+      dbg('OK', `syncProject OK — project_id DB: ${d.project_id} (${d.action})`);
+      updateDbId(proj.id, d.project_id);
+      return d.project_id;
+    } else {
+      dbg('ERR', 'syncProject: API ha restituito ok=false', d);
+      return null;
+    }
+  } catch(e) {
+    dbg('ERR', 'syncProject exception', e.message);
+    return null;
+  }
+}
+
+async function syncTrack(data) {
+  dbg('STEP', 'syncTrack — invio dati track al DB');
+  dbg('INFO', 'Payload syncTrack:', data);
+
+  // Validazione locale prima di inviare
+  if (!data.title) { dbg('ERR', 'syncTrack: title è vuoto!'); return null; }
+  if (!data.local_idb_id) { dbg('ERR', 'syncTrack: local_idb_id è vuoto!'); return null; }
+  if (!data.project_id) { dbg('WARN', 'syncTrack: project_id è null — track sarà salvata senza progetto'); }
+
+  try {
+    const r = await fetch('music.php?api=save_track', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(data)
+    });
+    dbg('INFO', `syncTrack HTTP: ${r.status} ${r.statusText}`);
+    if (!r.ok) {
+      const text = await r.text();
+      dbg('ERR', `syncTrack HTTP ${r.status}:`, text.slice(0,600));
+      return null;
+    }
+    const text = await r.text();
+    dbg('INFO', 'syncTrack raw response:', text.slice(0, 600));
+    let d;
+    try { d = JSON.parse(text); } catch(e) {
+      dbg('ERR', 'syncTrack: JSON parse fallito!', text.slice(0,600));
+      return null;
+    }
+    if (d.ok) {
+      dbg('OK', `syncTrack OK — track_id DB: ${d.track_id}`);
+      dbg('OK', 'Valori salvati nel DB:', d.debug);
+      return d.track_id;
+    } else {
+      dbg('ERR', 'syncTrack: API ha restituito ok=false', d);
+      return null;
+    }
+  } catch(e) {
+    dbg('ERR', 'syncTrack exception', e.message);
+    return null;
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  DEVICE ID
+// ══════════════════════════════════════════════════════════
 let DEVICE_ID = localStorage.getItem('mms_device_id');
 if (!DEVICE_ID) {
   DEVICE_ID = 'dev_' + Math.random().toString(36).slice(2,10) + '_' + Date.now().toString(36);
@@ -509,11 +880,9 @@ else if (ua.includes('iPhone')||ua.includes('iPad')) os='iOS';
 else if (ua.includes('Linux')) os='Linux';
 const DEVICE_NAME = bn + ' / ' + os;
 
-/* ══════════════════════════════════════════════════════════
-   PROJETS — localStorage ISOLÉ PAR USER
-   Chaque user a sa propre clé : mms_v3_u{id}
-   → Isolation totale entre les comptes sur le même navigateur
-══════════════════════════════════════════════════════════ */
+// ══════════════════════════════════════════════════════════
+//  PROJETS localStorage isolé par user
+// ══════════════════════════════════════════════════════════
 const LS_KEY = 'mms_v3_u' + CURRENT_USER.id;
 
 function getProjects() {
@@ -541,40 +910,13 @@ function renameProject(id, name) {
 }
 function updateDbId(localId, dbId) {
   const l = getProjects(); const p = l.find(p => p.id === localId);
-  if (p) { p.dbId = dbId; setProjects(l); }
+  if (p) { p.dbId = dbId; setProjects(l); dbg('INFO', `updateDbId: ${localId} → dbId=${dbId}`); }
 }
 let activeProjectId = getProjects()[0].id;
 
-/* ══════════════════════════════════════════════════════════
-   SYNC DB — projet + track
-══════════════════════════════════════════════════════════ */
-async function syncProject(proj) {
-  try {
-    const r = await fetch('music.php?api=save_project', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ name: proj.name, local_id: proj.id, device_id: DEVICE_ID, device_name: DEVICE_NAME })
-    });
-    const d = await r.json();
-    if (d.ok) { updateDbId(proj.id, d.project_id); return d.project_id; }
-  } catch(e) { console.warn('syncProject:', e); }
-  return null;
-}
-
-async function syncTrack(data) {
-  try {
-    const r = await fetch('music.php?api=save_track', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(data)
-    });
-    const d = await r.json();
-    if (d.ok) return d.track_id;
-  } catch(e) { console.warn('syncTrack:', e); }
-  return null;
-}
-
-/* ══════════════════════════════════════════════════════════
-   AI COVER
-══════════════════════════════════════════════════════════ */
+// ══════════════════════════════════════════════════════════
+//  AI COVER
+// ══════════════════════════════════════════════════════════
 let aiCoverBlob = null;
 let coverMode   = 'upload';
 
@@ -622,10 +964,9 @@ window.generateCover = async function() {
   } finally { btn.disabled=false; }
 };
 
-/* ══════════════════════════════════════════════════════════
-   INDEXEDDB — ISOLÉ PAR USER : MusicStudioDB_u{id}
-   → Chaque user a sa propre base locale, 0 interférence
-══════════════════════════════════════════════════════════ */
+// ══════════════════════════════════════════════════════════
+//  INDEXEDDB isolé par user
+// ══════════════════════════════════════════════════════════
 let _db = null;
 function getIDB() {
   if (_db) return Promise.resolve(_db);
@@ -686,9 +1027,9 @@ async function dbDelByProject(projId) {
   });
 }
 
-/* ══════════════════════════════════════════════════════════
-   WHISPER
-══════════════════════════════════════════════════════════ */
+// ══════════════════════════════════════════════════════════
+//  WHISPER
+// ══════════════════════════════════════════════════════════
 const FILE_W={'encoder_model.onnx':30,'decoder_model_merged.onnx':20,'tokenizer.json':1,'config.json':1,'tokenizer_config.json':1,'preprocessor_config.json':1};
 const TOT_W=Object.values(FILE_W).reduce((a,b)=>a+b,0);
 let loadedW=0; const filesDone=new Set();
@@ -756,7 +1097,7 @@ function syncLyricsWithTimings(whisperSegs,rawLyrics,userOffset){
   return result;
 }
 
-/* ══ CANVAS ══ */
+// ══ CANVAS ══
 function getSub(segs,t){for(const s of segs)if(t>=s.start&&t<s.end)return s.text;return '';}
 function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();}
 function clipTxt(ctx,txt,maxW){if(!txt)return '';if(ctx.measureText(txt).width<=maxW)return txt;while(txt.length>3&&ctx.measureText(txt+'…').width>maxW)txt=txt.slice(0,-1);return txt+'…';}
@@ -785,7 +1126,7 @@ function drawFrame(ctx,img,title,artist,sub){
   }
 }
 
-/* ══ HELPERS ══ */
+// ══ HELPERS ══
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function setPill(state,txt){const p=document.getElementById('statusPill'),t=document.getElementById('statusPillTxt');if(p)p.className='status-pill '+state;if(t)t.textContent=txt;}
 function logT(msg){const tl=document.getElementById('transLog');if(!tl)return;tl.style.display='block';const d=document.createElement('div');d.textContent=msg;tl.appendChild(d);tl.scrollTop=tl.scrollHeight;}
@@ -797,7 +1138,7 @@ function updateLabel(iId,lId,nId){const f=document.getElementById(iId)?.files[0]
 window.updateLabel=updateLabel;
 window.clearAiCover=function(){aiCoverBlob=null;};
 
-/* ══ TABS ══ */
+// ══ TABS ══
 function renderTabs() {
   const inner = document.getElementById('tabsInner'), newBtn = document.getElementById('btnNewProj');
   inner.querySelectorAll('.tab-btn,.tab-sep').forEach(el => el.remove());
@@ -811,17 +1152,22 @@ function renderTabs() {
   });
 }
 
-/* ══ RENDER PROJECT ══ */
+// ══ RENDER PROJECT ══
 function renderProject() {
   const projs = getProjects();
   const proj  = projs.find(p => p.id===activeProjectId) || projs[0];
   activeProjectId = proj.id; aiCoverBlob=null; coverMode='upload';
 
-  // Sync projet vers DB (arrière-plan)
+  dbg('INFO', `renderProject: "${proj.name}" — localId: ${proj.id} — dbId: ${proj.dbId}`);
+
+  // Sync projet vers DB
   syncProject(proj).then(dbId => {
     if (dbId) {
       const b = document.getElementById('syncBadge');
-      if (b) { b.textContent='✅ DB'; b.className='sync-badge ok'; b.style.display='inline-block'; }
+      if (b) { b.textContent='✅ DB id:'+dbId; b.className='sync-badge ok'; b.style.display='inline-block'; }
+    } else {
+      const b = document.getElementById('syncBadge');
+      if (b) { b.textContent='❌ DB sync fallita'; b.className='sync-badge err'; b.style.display='inline-block'; }
     }
   });
 
@@ -881,9 +1227,9 @@ function renderProject() {
           </div>
           <div id="coverGenBox" style="display:none">
             <div class="ai-cover-box">
-              <textarea class="cover-prompt-area" id="coverPrompt" placeholder="Descrivi la copertina…&#10;Es: neon city night rain cinematic dark purple"></textarea>
+              <textarea class="cover-prompt-area" id="coverPrompt" placeholder="Descrivi la copertina…"></textarea>
               <textarea class="cover-prompt-area" id="coverNegPrompt" style="min-height:44px;font-size:.8rem;color:#666;" placeholder="Da evitare (opzionale): blurry, text, watermark…"></textarea>
-              <div class="prompt-hint">💡 Inglese per risultati migliori · <b>Stile:</b> cinematic, dark, neon, watercolor…</div>
+              <div class="prompt-hint">💡 Inglese per risultati migliori</div>
               <button class="gen-cover-btn" id="genCoverBtn" onclick="generateCover()">✨ GENERA COPERTINA AI</button>
               <div class="gen-status" id="genStatus"></div>
               <div class="ai-cover-preview" id="aiCoverPreview">
@@ -917,14 +1263,13 @@ function renderProject() {
       </div>
       <div id="lyricsBox">
         <div class="field-label" style="margin-bottom:8px;">Testo della canzone</div>
-        <div style="font-size:.76rem;color:#555;margin-bottom:10px;line-height:1.6;">Supporta timestamp <b style="color:#777">[mm:ss]</b> come ancore precise.</div>
-        <textarea id="lyricsText" placeholder="[0:00] Prima riga&#10;[0:14] Seconda riga&#10;Terza riga senza timestamp"></textarea>
+        <div style="font-size:.76rem;color:#555;margin-bottom:10px;">Supporta timestamp <b style="color:#777">[mm:ss]</b> come ancore precise.</div>
+        <textarea id="lyricsText" placeholder="[0:00] Prima riga&#10;[0:14] Seconda riga"></textarea>
         <div class="offset-row">
           <span>⏱ Anticipo / Ritardo:</span>
           <input type="range" id="lyricsOffset" min="-3.0" max="3.0" step="0.1" value="-0.3"
             oninput="document.getElementById('offsetVal').textContent=(parseFloat(this.value)>=0?'+':'')+parseFloat(this.value).toFixed(1)+'s'">
           <span id="offsetVal">-0.3s</span>
-          <span style="font-size:.72rem;color:#444;">← anticipa | ritarda →</span>
         </div>
       </div>
       <button class="create-btn" id="createBtn">🎬 CREA IL VIDEO</button>
@@ -946,7 +1291,7 @@ function renderProject() {
   loadGallery();
 }
 
-/* ══ GALLERY ══ */
+// ══ GALLERY ══
 async function loadGallery() {
   try {
     const vs   = await dbGetByProject(activeProjectId);
@@ -993,7 +1338,7 @@ window.doDeleteProject = async function() {
   renderTabs(); renderProject();
 };
 
-/* ══ RESET UI ══ */
+// ══ RESET UI ══
 function resetUI() {
   const btn=document.getElementById('createBtn'); if(btn)btn.disabled=false;
   const pb=document.getElementById('progressBox'); if(pb)pb.style.display='none';
@@ -1012,8 +1357,12 @@ function resetUI() {
   aiCoverBlob=null; coverMode='upload'; switchCoverTab('upload');
 }
 
-/* ══ CREA VIDEO ══ */
+// ══════════════════════════════════════════════════════════
+//  CREA VIDEO — handleCreate con debug completo
+// ══════════════════════════════════════════════════════════
 async function handleCreate() {
+  dbg('STEP', '═══ INIZIO CREAZIONE VIDEO ═══');
+
   const title      = document.getElementById('title').value.trim();
   const artist     = document.getElementById('artist').value.trim();
   const coverFile  = document.getElementById('coverFile').files[0];
@@ -1026,9 +1375,19 @@ async function handleCreate() {
   const proj       = getProjects().find(p => p.id===projId);
   const usesAiCover = coverMode==='generate' && aiCoverBlob;
 
-  if (!title || !artist)           { alert('Compila titolo e artista.'); return; }
-  if (!audioFile)                  { alert('Carica un file audio.'); return; }
-  if (!usesAiCover && !coverFile)  { alert('Carica una copertina oppure generane una con l\'AI.'); return; }
+  dbg('INFO', 'Input form raccolti:', {
+    title, artist,
+    coverFile: coverFile?.name || '(nessuno)',
+    audioFile: audioFile?.name || '(nessuno)',
+    useWhisper, useLyrics,
+    lang, projId,
+    proj_dbId: proj?.dbId || null,
+    usesAiCover,
+  });
+
+  if (!title || !artist)           { alert('Compila titolo e artista.'); dbg('ERR','Validazione fallita: title o artist mancante'); return; }
+  if (!audioFile)                  { alert('Carica un file audio.'); dbg('ERR','Validazione fallita: audioFile mancante'); return; }
+  if (!usesAiCover && !coverFile)  { alert('Carica una copertina oppure generane una con l\'AI.'); dbg('ERR','Validazione fallita: cover mancante'); return; }
   if (useLyrics && !rawLyrics)     { alert('Hai selezionato "Testo manuale" ma il campo è vuoto!'); return; }
 
   document.getElementById('createBtn').disabled = true;
@@ -1036,6 +1395,8 @@ async function handleCreate() {
   setStatus('Inizializzazione…', 2, 'Non chiudere questa pagina');
 
   const lyricsMode = useLyrics && rawLyrics ? 'manual' : (useWhisper ? 'whisper' : 'none');
+  dbg('INFO', `lyricsMode: ${lyricsMode}`);
+
   let drawLoop=null, audioCtx=null, stopped=false;
   function doStop(rec) {
     if (stopped) return; stopped=true;
@@ -1060,6 +1421,7 @@ async function handleCreate() {
         await new Promise(r => setTimeout(r, 400));
       } catch(e) {
         logT('⚠️ '+e.message);
+        dbg('WARN', 'Errore Whisper (continuo senza sottotitoli):', e.message);
         if (!confirm('Errore Whisper:\n"'+e.message+'"\n\nContinuare senza sottotitoli?')) { resetUI(); return; }
         segs = [];
       }
@@ -1074,12 +1436,14 @@ async function handleCreate() {
     }
     const img = new Image();
     await new Promise((res,rej) => { img.onload=res; img.onerror=()=>rej(new Error('Immagine non valida')); img.src=imgB64; });
+    dbg('OK', `Copertina caricata: ${img.width}x${img.height}px`);
 
     setStatus('Decodifica audio…', 30);
     const aBuf = await readAs(audioFile, 'buffer');
     audioCtx   = new (window.AudioContext||window.webkitAudioContext)();
     const decoded  = await audioCtx.decodeAudioData(aBuf);
     const duration = decoded.duration;
+    dbg('OK', `Audio decodificato: ${Math.round(duration)}s`);
 
     const canvas = document.createElement('canvas'); canvas.width=1280; canvas.height=720;
     const ctx2d  = canvas.getContext('2d'); drawFrame(ctx2d, img, title, artist, '');
@@ -1091,103 +1455,102 @@ async function handleCreate() {
     const aTrack = dest.stream.getAudioTracks()[0]; if (aTrack) stream.addTrack(aTrack);
 
     const mime = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(m=>MediaRecorder.isTypeSupported(m)) || 'video/webm';
+    dbg('INFO', `MediaRecorder MIME: ${mime}`);
     const rec    = new MediaRecorder(stream, {mimeType:mime});
     const chunks = [];
     rec.ondataavailable = e => { if (e.data?.size>0) chunks.push(e.data); };
 
-   // ════════════════════════════════════════════════════════════
-// SOSTITUISCI QUESTO BLOCCO nel tuo music.php
-// Cerca: rec.onstop = async () => {
-// e sostituisci TUTTO il blocco fino al }; successivo
-// ════════════════════════════════════════════════════════════
-
+    // ══════════════════════════════════════════════════════
+    //  rec.onstop — NUCLEO DELLA SINCRONIZZAZIONE DB
+    // ══════════════════════════════════════════════════════
     rec.onstop = async () => {
+      dbg('STEP', '═══ rec.onstop: inizio salvataggio ═══');
       setStatus('Salvataggio…', 99, '');
       try {
         if (!chunks.length) throw new Error('Nessun dato — usa Chrome o Edge.');
         const blob = new Blob(chunks, {type:'video/webm'});
+        dbg('OK', `Blob video creato: ${(blob.size/1024/1024).toFixed(2)} MB`);
 
-        // ── 1. Salva in IndexedDB locale ─────────────────────
+        // ── STEP 1: Salva in IndexedDB locale ─────────────
+        dbg('STEP', 'STEP 1 — Salvataggio IndexedDB locale');
         const idbId = await dbSave(blob, title, artist, projId, proj?.dbId||null, lyricsMode);
+        dbg('OK', `IndexedDB OK — idbId: ${idbId}`);
         setStatus('✅ Salvato localmente! Sincronizzazione DB…', 100, '');
-        logT('💾 Salvato in IndexedDB: ' + idbId);
 
-        // ── 2. Aspetta il dbId del progetto (fondamentale!) ──
+        // ── STEP 2: Ottieni projDbId (ATTENDI!) ────────────
+        dbg('STEP', 'STEP 2 — Sincronizzazione progetto con DB');
         let projDbId = proj?.dbId || null;
+        dbg('INFO', `proj.dbId attuale: ${projDbId}`);
+
         if (!projDbId) {
-          logT('📡 Sincronizzazione progetto con DB…');
+          dbg('INFO', 'projDbId non disponibile — chiamata syncProject...');
           projDbId = await syncProject(proj);
           if (projDbId) {
-            logT('✅ Progetto sincronizzato — DB id: ' + projDbId);
+            dbg('OK', `syncProject OK — projDbId: ${projDbId}`);
           } else {
-            logT('⚠️ Sincronizzazione progetto fallita — riprovo tra 2s…');
+            dbg('WARN', 'syncProject fallito — riprovo tra 2 secondi...');
             await new Promise(r => setTimeout(r, 2000));
             projDbId = await syncProject(proj);
-            if (!projDbId) logT('❌ Impossibile sincronizzare il progetto — il video resterà solo locale');
-          }
-        }
-
-        // ── 3. Sync track verso PostgreSQL ───────────────────
-        if (projDbId) {
-          logT('📡 Sincronizzazione track verso DB…');
-          try {
-            const trackId = await syncTrack({
-              title,
-              artist,
-              local_idb_id: idbId,
-              project_id:   projDbId,
-              language:     lang,
-              cover_type:   usesAiCover ? 'ai' : 'upload',
-              lyrics_mode:  lyricsMode,
-              device_id:    DEVICE_ID,
-              device_name:  DEVICE_NAME,
-              size_bytes:   blob.size,
-              duration_s:   Math.round(duration * 10) / 10,
-            });
-
-            if (trackId) {
-              logT('✅ Track salvata su DB — id: ' + trackId);
-              await dbMarkSynced(idbId);
-              // Aggiorna il badge ● verde nella gallery
-              loadGallery();
+            if (projDbId) {
+              dbg('OK', `syncProject OK (2° tentativo) — projDbId: ${projDbId}`);
             } else {
-              logT('⚠️ syncTrack ha restituito null — riprovo tra 3s…');
-              await new Promise(r => setTimeout(r, 3000));
-              const trackId2 = await syncTrack({
-                title, artist, local_idb_id: idbId,
-                project_id: projDbId, language: lang,
-                cover_type: usesAiCover ? 'ai' : 'upload',
-                lyrics_mode: lyricsMode, device_id: DEVICE_ID,
-                device_name: DEVICE_NAME, size_bytes: blob.size,
-                duration_s: Math.round(duration * 10) / 10,
-              });
-              if (trackId2) {
-                logT('✅ Track sincronizzata al secondo tentativo — id: ' + trackId2);
-                await dbMarkSynced(idbId);
-                loadGallery();
-              } else {
-                logT('❌ Sincronizzazione track fallita — verifica la sessione PHP e il DB');
-              }
+              dbg('ERR', 'syncProject fallito anche al 2° tentativo — salvo track senza project_id');
             }
-          } catch(syncErr) {
-            logT('❌ Errore sync track: ' + syncErr.message);
-            console.error('syncTrack error:', syncErr);
           }
         } else {
-          logT('⚠️ Track non sincronizzata su DB (progetto non sincronizzato)');
+          dbg('OK', `projDbId già disponibile: ${projDbId}`);
         }
 
-        // ── 4. Reset UI e ricarica gallery ───────────────────
+        // ── STEP 3: Sync track → PostgreSQL ───────────────
+        dbg('STEP', 'STEP 3 — Sincronizzazione track con DB PostgreSQL');
+        const trackPayload = {
+          title,
+          artist,
+          local_idb_id: idbId,
+          project_id:   projDbId || null,
+          language:     lang,
+          cover_type:   usesAiCover ? 'ai' : 'upload',
+          lyrics_mode:  lyricsMode,
+          device_id:    DEVICE_ID,
+          device_name:  DEVICE_NAME,
+          size_bytes:   blob.size,
+          duration_s:   Math.round(duration * 10) / 10,
+        };
+        dbg('INFO', 'Payload track da inviare:', trackPayload);
+
+        const trackId = await syncTrack(trackPayload);
+
+        if (trackId) {
+          dbg('OK', `✅ TRACK SALVATA SU DB — track_id: ${trackId}`);
+          await dbMarkSynced(idbId);
+          dbg('OK', 'IndexedDB marcato come synced');
+          loadGallery();
+        } else {
+          dbg('ERR', 'syncTrack ha restituito null — track NON salvata su DB');
+          dbg('WARN', 'Riprovo tra 3 secondi...');
+          await new Promise(r => setTimeout(r, 3000));
+          const trackId2 = await syncTrack(trackPayload);
+          if (trackId2) {
+            dbg('OK', `✅ Track salvata al 2° tentativo — track_id: ${trackId2}`);
+            await dbMarkSynced(idbId);
+            loadGallery();
+          } else {
+            dbg('ERR', '❌ Track NON salvata neanche al 2° tentativo — leggi il debug sopra per la causa');
+          }
+        }
+
+        dbg('STEP', '═══ SALVATAGGIO COMPLETATO ═══');
         setTimeout(() => { resetUI(); loadGallery(); }, 1200);
 
       } catch(err) {
-        logT('❌ Errore salvataggio: ' + err.message);
-        alert('Errore salvataggio: ' + err.message);
+        dbg('ERR', 'Eccezione in rec.onstop:', err.message);
+        alert('Errore salvataggio: '+err.message);
         resetUI();
       }
     };
 
     setStatus('Registrazione…', 32, 'Non chiudere questa pagina');
+    dbg('INFO', 'Avvio MediaRecorder e riproduzione audio...');
     rec.start(1000); const t0 = audioCtx.currentTime; bufSrc.start(0);
     drawLoop = setInterval(() => {
       if (stopped) return;
@@ -1197,34 +1560,31 @@ async function handleCreate() {
       drawFrame(ctx2d, img, title, artist, getSub(segs, el));
       if (el >= duration) doStop(rec);
     }, 50);
-    bufSrc.onended = () => doStop(rec);
+    bufSrc.onended = () => { dbg('INFO', 'Audio terminato — avvio doStop'); doStop(rec); };
 
   } catch(err) {
     if (drawLoop) clearInterval(drawLoop);
     if (audioCtx) audioCtx.close().catch(()=>{});
+    dbg('ERR', 'Eccezione in handleCreate:', err.message);
     console.error(err); alert('Errore: '+err.message); resetUI();
   }
 }
 
-/* ══ ADMIN PANEL ══ */
+// ══ ADMIN PANEL ══
 window.openAdmin = async function() {
   document.getElementById('adminOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
   const content = document.getElementById('adminContent');
   content.innerHTML = '<div class="admin-loading">⏳ Caricamento dati dal DB…</div>';
-
   try {
     const res  = await fetch('music.php?api=admin_data', { method:'POST', body:'' });
     const data = await res.json();
     if (!data.ok) { content.innerHTML = '<div class="admin-loading" style="color:#f44336">❌ '+esc(data.error)+'</div>'; return; }
-
     const s   = data.stats || {};
     const fmt = n => Number(n||0).toLocaleString('it-IT');
     const fmtMb = b => (Number(b||0)/1024/1024).toFixed(1)+' MB';
     const fmtDate = d => d ? new Date(d).toLocaleDateString('it-IT') : '—';
-
     content.innerHTML = `
-      <!-- Statistiques -->
       <div class="stats-grid">
         <div class="stat-card"><div class="stat-val">${fmt(s.total_users)}</div><div class="stat-lbl">👥 Utenti</div></div>
         <div class="stat-card"><div class="stat-val">${fmt(s.total_tracks)}</div><div class="stat-lbl">🎬 Video totali</div></div>
@@ -1235,73 +1595,47 @@ window.openAdmin = async function() {
         <div class="stat-card"><div class="stat-val">${fmt(s.unique_devices)}</div><div class="stat-lbl">📱 Dispositivi</div></div>
         <div class="stat-card"><div class="stat-val">${fmt(s.active_users)}</div><div class="stat-lbl">✅ Utenti attivi</div></div>
       </div>
-
-      <!-- Tableau utilisateurs -->
-      <div class="admin-sec">👥 Utenti registrati</div>
-      <table class="tbl">
-        <thead><tr>
-          <th>Utente</th><th>Email</th><th>Ruolo</th>
-          <th>Progetti</th><th>Video</th><th>Storage</th>
-          <th>Registrato</th><th>Ultimo login</th>
-        </tr></thead>
-        <tbody>
-          ${(data.users||[]).map(u=>`<tr>
-            <td><strong>${esc(u.username||'')}</strong></td>
-            <td style="color:#666;font-size:.78rem">${esc(u.email||'')}</td>
-            <td><span class="chip ${u.role==='admin'?'c-admin':'c-user'}">${u.role}</span>
-                ${u.is_active?'':'<span class="chip" style="background:#1a0808;color:#f44336;border-color:#5a1a1a;margin-left:4px">off</span>'}</td>
-            <td style="text-align:center">${fmt(u.project_count)}</td>
-            <td style="text-align:center">${fmt(u.track_count)}</td>
-            <td style="color:#777;font-size:.76rem">${fmtMb(u.total_bytes)}</td>
-            <td style="color:#555;font-size:.74rem">${fmtDate(u.created_at)}</td>
-            <td style="color:#555;font-size:.74rem">${fmtDate(u.last_login_at)}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-
-      <!-- Tableau vidéos -->
+      <div class="admin-sec">👥 Utenti</div>
+      <table class="tbl"><thead><tr><th>Utente</th><th>Email</th><th>Ruolo</th><th>Progetti</th><th>Video</th><th>Storage</th><th>Registrato</th><th>Ultimo login</th></tr></thead>
+      <tbody>${(data.users||[]).map(u=>`<tr>
+        <td><strong>${esc(u.username||'')}</strong></td>
+        <td style="color:#666;font-size:.78rem">${esc(u.email||'')}</td>
+        <td><span class="chip ${u.role==='admin'?'c-admin':'c-user'}">${u.role}</span></td>
+        <td style="text-align:center">${fmt(u.project_count)}</td>
+        <td style="text-align:center">${fmt(u.track_count)}</td>
+        <td style="color:#777;font-size:.76rem">${fmtMb(u.total_bytes)}</td>
+        <td style="color:#555;font-size:.74rem">${fmtDate(u.created_at)}</td>
+        <td style="color:#555;font-size:.74rem">${fmtDate(u.last_login_at)}</td>
+      </tr>`).join('')}</tbody></table>
       <div class="admin-sec" style="margin-top:34px">🎬 Tutti i video (ultimi 300)</div>
-      <input class="admin-search" type="text" id="adminSearch"
-             placeholder="🔍 Cerca titolo, artista, utente, progetto…"
-             oninput="filterAdmin(this.value)">
-      <table class="tbl" id="adminTbl">
-        <thead><tr>
-          <th>Titolo</th><th>Artista</th><th>Utente</th>
-          <th>Progetto</th><th>Storage</th><th>Dimensione</th><th>Data</th>
-        </tr></thead>
-        <tbody id="adminTblBody">
-          ${(data.tracks||[]).map(t=>`<tr>
-            <td><strong>${esc(t.title||'')}</strong></td>
-            <td>${esc(t.artist||'')}</td>
-            <td style="color:#9090ff">${esc(t.username||'')}</td>
-            <td style="color:#777">${esc(t.project_name||'—')}</td>
-            <td><span class="chip ${t.storage_type==='both'?'c-both':t.storage_type==='server'?'c-server':'c-local'}">${t.storage_type||'local'}</span></td>
-            <td style="color:#555;font-size:.76rem">${fmtMb(t.video_size_bytes)}</td>
-            <td style="color:#555;font-size:.74rem">${fmtDate(t.created_at)}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>`;
-
+      <input class="admin-search" type="text" id="adminSearch" placeholder="🔍 Cerca…" oninput="filterAdmin(this.value)">
+      <table class="tbl" id="adminTbl"><thead><tr><th>Titolo</th><th>Artista</th><th>Utente</th><th>Progetto</th><th>Storage</th><th>Dimensione</th><th>Data</th></tr></thead>
+      <tbody id="adminTblBody">${(data.tracks||[]).map(t=>`<tr>
+        <td><strong>${esc(t.title||'')}</strong></td>
+        <td>${esc(t.artist||'')}</td>
+        <td style="color:#9090ff">${esc(t.username||'')}</td>
+        <td style="color:#777">${esc(t.project_name||'—')}</td>
+        <td><span class="chip ${t.storage_type==='both'?'c-both':t.storage_type==='server'?'c-server':'c-local'}">${t.storage_type||'local'}</span></td>
+        <td style="color:#555;font-size:.76rem">${fmtMb(t.video_size_bytes)}</td>
+        <td style="color:#555;font-size:.74rem">${fmtDate(t.created_at)}</td>
+      </tr>`).join('')}</tbody></table>`;
   } catch(e) {
     content.innerHTML = '<div class="admin-loading" style="color:#f44336">❌ Errore: '+esc(e.message)+'</div>';
   }
 };
-
 window.closeAdmin = function() {
   document.getElementById('adminOverlay').classList.remove('open');
   document.body.style.overflow = '';
 };
-
 window.filterAdmin = function(q) {
   const ql = q.toLowerCase();
   document.querySelectorAll('#adminTblBody tr').forEach(r => {
     r.style.display = r.textContent.toLowerCase().includes(ql) ? '' : 'none';
   });
 };
-
 document.addEventListener('keydown', e => { if (e.key==='Escape') window.closeAdmin(); });
 
-/* ══ MODAL ══ */
+// ══ MODAL ══
 document.getElementById('btnNewProj').onclick = () => {
   document.getElementById('modalInput').value = '';
   document.getElementById('modalBg').classList.add('open');
@@ -1313,7 +1647,7 @@ document.getElementById('btnModalOk').onclick = () => {
   if (!name) { alert('Inserisci un nome!'); return; }
   const p = addProject(name); activeProjectId = p.id;
   document.getElementById('modalBg').classList.remove('open');
-  syncProject(p); // sync immédiat
+  syncProject(p);
   renderTabs(); renderProject();
 };
 document.getElementById('modalInput').addEventListener('keydown', e => {
@@ -1324,15 +1658,25 @@ document.getElementById('modalBg').addEventListener('click', e => {
   if (e.target===document.getElementById('modalBg')) document.getElementById('modalBg').classList.remove('open');
 });
 
-/* ══ INIT ══ */
+// ══ INIT ══
+dbg('INFO', `App inizializzata — user: ${CURRENT_USER.username} (id:${CURRENT_USER.id}) role:${CURRENT_USER.role}`);
+dbg('INFO', `Device: ${DEVICE_NAME} — DeviceID: ${DEVICE_ID}`);
+dbg('INFO', `LocalStorage key: ${LS_KEY}`);
+dbg('INFO', 'Clicca "🔍 DB Check" per verificare la connessione al DB e lo schema delle tabelle');
+
 getIDB()
-  .then(() => { renderTabs(); renderProject(); })
-  .catch(() => {
+  .then(() => {
+    dbg('OK', 'IndexedDB aperto correttamente');
+    renderTabs();
+    renderProject();
+    // Auto-check DB all'avvio
+    setTimeout(runDebugCheck, 800);
+  })
+  .catch(e => {
+    dbg('ERR', 'IndexedDB non disponibile:', e.message);
     document.getElementById('appContent').innerHTML =
       '<div class="empty"><span class="empty-icon">⚠️</span>IndexedDB non disponibile.<br>Usa Chrome o Edge.</div>';
   });
 </script>
 </body>
 </html>
-
-  
