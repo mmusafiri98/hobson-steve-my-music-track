@@ -2,6 +2,17 @@
 // ============================================================
 //  music.php — My Music Studio  [VERSION DEBUG]
 // ============================================================
+
+// ── Sessione lunga: 8 ore — necessario per elaborazioni Whisper lunghe ──
+ini_set('session.gc_maxlifetime',  28800);
+ini_set('session.cookie_lifetime', 28800);
+session_set_cookie_params([
+    'lifetime' => 28800,
+    'path'     => '/',
+    'secure'   => isset($_SERVER['HTTPS']),
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
 session_start();
 require_once __DIR__ . '/db.php';
 
@@ -94,6 +105,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['api'])) {
         } catch (PDOException $e) {
             echo json_encode(['ok' => false, 'error' => $e->getMessage(), 'step' => 'debug_check']);
         }
+        exit;
+    }
+
+    // ── keepalive — rinnova la sessione PHP ──────────────────
+    // Chiamato dal JS ogni 60s durante elaborazioni lunghe
+    if ($action === 'keepalive') {
+        // Rinnova il cookie di sessione
+        session_regenerate_id(false);
+        // Aggiorna last_activity in user_sessions
+        try {
+            $pdo = getDB();
+            $pdo->prepare(
+                "UPDATE user_sessions SET last_activity = NOW(),
+                    expires_at = NOW() + INTERVAL '7 days'
+                 WHERE user_id = :uid"
+            )->execute([':uid' => $uid]);
+        } catch (PDOException $e) {}
+        echo json_encode([
+            'ok'         => true,
+            'session_id' => session_id(),
+            'user_id'    => $uid,
+            'time'       => date('H:i:s'),
+        ]);
         exit;
     }
 
@@ -779,6 +813,48 @@ window.runDebugCheck = async function() {
 };
 
 // ══════════════════════════════════════════════════════════
+//  KEEPALIVE — mantiene la sessione PHP viva durante
+//  elaborazioni lunghe (Whisper + registrazione video)
+//  Pinga il server ogni 60 secondi
+// ══════════════════════════════════════════════════════════
+let _keepaliveTimer = null;
+let _keepaliveCount = 0;
+
+function startKeepalive() {
+  if (_keepaliveTimer) return; // già attivo
+  _keepaliveCount = 0;
+  dbg('INFO', '🔄 Keepalive sessione avviato (ogni 60s)');
+  _keepaliveTimer = setInterval(async () => {
+    try {
+      _keepaliveCount++;
+      const r = await fetch('music.php?api=keepalive', { method:'POST', body:'' });
+      if (!r.ok) {
+        dbg('ERR', `Keepalive HTTP ${r.status} — sessione probabilmente scaduta!`);
+        stopKeepalive();
+        return;
+      }
+      const d = await r.json();
+      if (d.ok) {
+        dbg('OK', `Keepalive #${_keepaliveCount} — sessione attiva (user_id: ${d.user_id}, ora: ${d.time})`);
+      } else {
+        dbg('ERR', 'Keepalive: risposta ok=false — sessione scaduta!');
+        stopKeepalive();
+      }
+    } catch(e) {
+      dbg('WARN', `Keepalive eccezione: ${e.message}`);
+    }
+  }, 60000); // ogni 60 secondi
+}
+
+function stopKeepalive() {
+  if (_keepaliveTimer) {
+    clearInterval(_keepaliveTimer);
+    _keepaliveTimer = null;
+    dbg('INFO', `🔴 Keepalive fermato dopo ${_keepaliveCount} ping`);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
 //  SYNC FUNCTIONS — con debug completo
 // ══════════════════════════════════════════════════════════
 async function syncProject(proj) {
@@ -1394,6 +1470,9 @@ async function handleCreate() {
   document.getElementById('progressBox').style.display = 'block';
   setStatus('Inizializzazione…', 2, 'Non chiudere questa pagina');
 
+  // ── Avvia keepalive subito: protegge tutta l'elaborazione ──
+  startKeepalive();
+
   const lyricsMode = useLyrics && rawLyrics ? 'manual' : (useWhisper ? 'whisper' : 'none');
   dbg('INFO', `lyricsMode: ${lyricsMode}`);
 
@@ -1540,10 +1619,12 @@ async function handleCreate() {
         }
 
         dbg('STEP', '═══ SALVATAGGIO COMPLETATO ═══');
+        stopKeepalive();
         setTimeout(() => { resetUI(); loadGallery(); }, 1200);
 
       } catch(err) {
         dbg('ERR', 'Eccezione in rec.onstop:', err.message);
+        stopKeepalive();
         alert('Errore salvataggio: '+err.message);
         resetUI();
       }
@@ -1565,6 +1646,7 @@ async function handleCreate() {
   } catch(err) {
     if (drawLoop) clearInterval(drawLoop);
     if (audioCtx) audioCtx.close().catch(()=>{});
+    stopKeepalive();
     dbg('ERR', 'Eccezione in handleCreate:', err.message);
     console.error(err); alert('Errore: '+err.message); resetUI();
   }
