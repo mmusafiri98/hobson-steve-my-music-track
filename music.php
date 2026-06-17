@@ -1,8 +1,4 @@
-// ══════════════════════════════════════════════════════════
-//  PATCH 1 — Remplace syncLyricsWithTimings (ligne ~680 dans music.php)
-//  Problème résolu : quand les paroles ont des timestamps [mm:ss],
-//  on ne dépend plus du tout de Whisper pour le timing.
-// ══════════════════════════════════════════════════════════
+
 
 function syncLyricsWithTimings(whisperSegs, rawLyrics, userOffset) {
   if (typeof userOffset !== 'number' || isNaN(userOffset)) userOffset = -0.3;
